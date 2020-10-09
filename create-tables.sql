@@ -1,4 +1,4 @@
-CREATE TABLE "Warehouse" (
+CREATE TABLE IF NOT EXISTS "Warehouse" (
   "W_ID" int PRIMARY KEY,
   "W_NAME" varchar(10),
   "W_STREET_1" varchar(20),
@@ -10,7 +10,7 @@ CREATE TABLE "Warehouse" (
   "W_YTD" decimal(12,2)
 );
 
-CREATE TABLE "District" (
+CREATE TABLE IF NOT EXISTS "District" (
   "D_W_ID" int,
   "D_ID" int,
   "D_NAME" varchar(10),
@@ -22,10 +22,11 @@ CREATE TABLE "District" (
   "D_TAX" decimal(4,4),
   "D_YTD" decimal(12,2),
   "D_NEXT_O_ID" int,
-  PRIMARY KEY ("D_W_ID", "D_ID")
+  PRIMARY KEY ("D_W_ID", "D_ID"),
+  FOREIGN KEY ("D_W_ID") REFERENCES "Warehouse" ("W_ID")
 );
 
-CREATE TABLE "Customer" (
+CREATE TABLE IF NOT EXISTS "Customer" (
   "C_W_ID" int,
   "C_D_ID" int,
   "C_ID" int,
@@ -47,10 +48,11 @@ CREATE TABLE "Customer" (
   "C_PAYMENT_CNT" int,
   "C_DELIVERY_CNT" int,
   "C_DATA" varchar(500),
-  PRIMARY KEY ("C_W_ID", "C_D_ID", "C_ID")
+  PRIMARY KEY ("C_W_ID", "C_D_ID", "C_ID"),
+  FOREIGN KEY ("C_W_ID", "C_D_ID") REFERENCES "District" ("D_W_ID", "D_ID")
 );
 
-CREATE TABLE "Order" (
+CREATE TABLE IF NOT EXISTS "Order" (
   "O_W_ID" int,
   "O_D_ID" int,
   "O_ID" int,
@@ -62,7 +64,7 @@ CREATE TABLE "Order" (
   PRIMARY KEY ("O_W_ID", "O_D_ID", "O_ID")
 );
 
-CREATE TABLE "Item" (
+CREATE TABLE IF NOT EXISTS "Item" (
   "I_ID" int PRIMARY KEY,
   "I_NAME" varchar(24),
   "I_PRICE" decimal(5,2),
@@ -70,7 +72,7 @@ CREATE TABLE "Item" (
   "I_DATA" varchar(50)
 );
 
-CREATE TABLE "OrderLine" (
+CREATE TABLE IF NOT EXISTS "OrderLine" (
   "OL_W_ID" int,
   "OL_D_ID" int,
   "OL_O_ID" int,
@@ -84,7 +86,7 @@ CREATE TABLE "OrderLine" (
   PRIMARY KEY ("OL_W_ID", "OL_D_ID", "OL_O_ID", "OL_NUMBER")
 );
 
-CREATE TABLE "Stock" (
+CREATE TABLE IF NOT EXISTS "Stock" (
   "S_W_ID" int,
   "S_I_ID" int,
   "S_QUANTITY" decimal(4,0),
@@ -105,27 +107,27 @@ CREATE TABLE "Stock" (
   PRIMARY KEY ("S_W_ID", "S_I_ID")
 );
 
-ALTER TABLE "District" ADD FOREIGN KEY ("D_W_ID") REFERENCES "Warehouse" ("W_ID");
+-- ALTER TABLE "District" ADD FOREIGN KEY ("D_W_ID") REFERENCES "Warehouse" ("W_ID");
 
-ALTER TABLE "Customer" ADD FOREIGN KEY ("C_W_ID") REFERENCES "Warehouse" ("W_ID");
+-- ALTER TABLE "Customer" ADD FOREIGN KEY ("C_W_ID", "C_D_ID") REFERENCES ("Warehouse" ("W_ID"), "District" ("D_ID");
 
-ALTER TABLE "Customer" ADD FOREIGN KEY ("C_D_ID") REFERENCES "District" ("D_ID");
+-- -- ALTER TABLE "Customer" ADD FOREIGN KEY ("C_D_ID") REFERENCES "District" ("D_ID");
 
-ALTER TABLE "Order" ADD FOREIGN KEY ("O_W_ID") REFERENCES "Warehouse" ("W_ID");
+-- ALTER TABLE "Order" ADD FOREIGN KEY ("O_W_ID") REFERENCES "Warehouse" ("W_ID");
 
-ALTER TABLE "Order" ADD FOREIGN KEY ("O_D_ID") REFERENCES "District" ("D_ID");
+-- ALTER TABLE "Order" ADD FOREIGN KEY ("O_D_ID") REFERENCES "District" ("D_ID");
 
-ALTER TABLE "Order" ADD FOREIGN KEY ("O_C_ID") REFERENCES "Customer" ("C_ID");
+-- ALTER TABLE "Order" ADD FOREIGN KEY ("O_C_ID") REFERENCES "Customer" ("C_ID");
 
-ALTER TABLE "OrderLine" ADD FOREIGN KEY ("OL_W_ID") REFERENCES "Warehouse" ("W_ID");
+-- ALTER TABLE "OrderLine" ADD FOREIGN KEY ("OL_W_ID") REFERENCES "Warehouse" ("W_ID");
 
-ALTER TABLE "OrderLine" ADD FOREIGN KEY ("OL_D_ID") REFERENCES "District" ("D_ID");
+-- ALTER TABLE "OrderLine" ADD FOREIGN KEY ("OL_D_ID") REFERENCES "District" ("D_ID");
 
-ALTER TABLE "OrderLine" ADD FOREIGN KEY ("OL_O_ID") REFERENCES "Order" ("O_ID");
+-- ALTER TABLE "OrderLine" ADD FOREIGN KEY ("OL_O_ID") REFERENCES "Order" ("O_ID");
 
-ALTER TABLE "OrderLine" ADD FOREIGN KEY ("OL_I_ID") REFERENCES "Item" ("I_ID");
+-- ALTER TABLE "OrderLine" ADD FOREIGN KEY ("OL_I_ID") REFERENCES "Item" ("I_ID");
 
-ALTER TABLE "Stock" ADD FOREIGN KEY ("S_W_ID") REFERENCES "Warehouse" ("W_ID");
+-- ALTER TABLE "Stock" ADD FOREIGN KEY ("S_W_ID") REFERENCES "Warehouse" ("W_ID");
 
-ALTER TABLE "Stock" ADD FOREIGN KEY ("S_I_ID") REFERENCES "Item" ("I_ID");
+-- ALTER TABLE "Stock" ADD FOREIGN KEY ("S_I_ID") REFERENCES "Item" ("I_ID");
 

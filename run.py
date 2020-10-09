@@ -19,17 +19,17 @@ def readAndExecSql(conn, file):
 
 
 def main():
-    # Usage: python3 setup.py <hostNum> <file>
-    # Example: python3 setup.py 2
-    # if arg not specified, use default host 2
+    # Usage: python3 setup.py <file> <hostNum>
+    # Example: python3 setup.py create-tables.sql 2
+    # if hostNum not specified, use default host 2 (i.e. xcnc2)
     parser = argparse.ArgumentParser()
-    parser.add_argument("hostNum", metavar='H',
-                        type=int,
-                        help='Host number e.g. 2 for xcnc2'
-                        )
     parser.add_argument("file", metavar="F",
                         type=argparse.FileType('r'),
                         help='File with SQL to be executed')
+    parser.add_argument("-hn", '--hostNum',
+                        type=int, default=2,
+                        help='Host number e.g. 2 for xcnc2. Default is xcnc2.'
+                        )
     args = parser.parse_args()
 
     host = f'xcnc{args.hostNum}.comp.nus.edu.sg'
