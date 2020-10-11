@@ -1,8 +1,20 @@
 import math
 import sys
-from datetime import datetime
 from datetime import timedelta
-import time
+import transaction
+import argparse
+import psycopg2
+
+TXN_ID = {
+    "NEW_ORDER": "N",
+    "PAYMENT": "P",
+    "DELIVERY": "D",
+    "ORDER_STATUS": "O",
+    "STOCK_LEVEL": "S",
+    "POPULAR_ITEM": "I",
+    "TOP_BALANCE": "T",
+    "RELATED_CUSTOMER": "R",
+}
 
 
 def get_percentile(data, percentile):
@@ -36,48 +48,79 @@ class MetricsManager:
             get_percentile(sorted_transaction_timings, 99)))
 
 
-class Transaction:
-    def __init__(self, metrics_manager):
-        self.inputs = {}
-        self.outputs = {}
-        self.metrics_manager = metrics_manager
-        self.start_time = None
-        self.end_time = None
+def setup_transactions(file, metrics, conn):
+    transactions = []
+    line = file.readline()
+    while line:
+        args = line.rstrip('\n').split(',')
+        identifier = args[0]
+        if identifier == TXN_ID["NEW_ORDER"]:
+            inputs = args[1:]
+            # Adds each item as a nested list
+            num_items = int(args[-1])
+            for i in range(0, num_items):
+                item_line = file.readline()
+                inputs.append(item_line.rstrip('\n').split(','))
+            transactions.append(transaction.NewOrderTransaction(metrics, conn, inputs))
+        elif identifier == TXN_ID["PAYMENT"]:
+            transactions.append(transaction.PaymentTransaction(metrics, conn, args[1:]))
+        elif identifier == TXN_ID["DELIVERY"]:
+            transactions.append(transaction.DeliveryTransaction(metrics, conn, args[1:]))
+        elif identifier == TXN_ID["ORDER_STATUS"]:
+            transactions.append(transaction.OrderStatusTransaction(metrics, conn, args[1:]))
+        elif identifier == TXN_ID["STOCK_LEVEL"]:
+            transactions.append(transaction.StockLevelTransaction(metrics, conn, args[1:]))
+        elif identifier == TXN_ID["POPULAR_ITEM"]:
+            transactions.append(transaction.PopularItemTransaction(metrics, conn, args[1:]))
+        elif identifier == TXN_ID["TOP_BALANCE"]:
+            transactions.append(transaction.TopBalanceTransaction(metrics, conn, args[1:]))
+        elif identifier == TXN_ID["RELATED_CUSTOMER"]:
+            transactions.append(transaction.RelatedCustomerTransaction(metrics, conn, args[1:]))
+        else:
+            print("UNABLE TO PARSE XACT INPUT: ", args)
 
-    def print_outputs(self):
-        for k, v in self.outputs.items():
-            sys.stdout.write("{}: {}\n".format(k, v))
+        line = file.readline()
 
-    def start(self):
-        self.start_time = datetime.now()
-        self.outputs["hello"] = "flower"
-
-    def end(self):
-        self.end_time = datetime.now()
-
-        # Log metrics to manager
-        if self.metrics_manager is not None:
-            self.metrics_manager.add(self.end_time - self.start_time)
+    return transactions
 
 
-def read_xact_file(path):
-    pass
+def main():
+    # Usage: python3 client.py <file> <hostNum> <db>
+    # Example: python3 client.py 1.txt -hn 2
+    # if hostNum not specified, use default host 2 (i.e. xcnc2)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("file", metavar="F",
+                        type=argparse.FileType('r'),
+                        help='Transaction file for client')
+    parser.add_argument("-hn", '--hostNum',
+                        type=int, default=2,
+                        help='Host number e.g. 2 for xcnc2. Default is xcnc2.'
+                        )
+    parser.add_argument("-db", '--database',
+                        type=str, default="project",
+                        help='Database name'
+                        )
+    args = parser.parse_args()
 
+    host = f'xcnc{args.hostNum}.comp.nus.edu.sg'
+    port = '26259'
+    user = 'admin'  # use admin so we don't have to grant privileges manually
+    database = args.database
+    conn = psycopg2.connect(host=host,
+                            port=port,
+                            user=user,
+                            database=database)
 
-def handle_transaction(transaction):
-    pass
-
-
-def test_metrics_manager():
     metrics = MetricsManager()
-    for i in range(1, 1000):
-        txn = Transaction(metrics)
-        txn.start()
-        time.sleep(i / 1000000)
-        txn.end()
+    transactions = setup_transactions(args.file, metrics, conn)
+    args.file.close()
+
+    for txn in transactions:
+        txn.run()
         txn.print_outputs()
+
     metrics.output_metrics()
 
 
 if __name__ == '__main__':
-    test_metrics_manager()
+    main()
