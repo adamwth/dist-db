@@ -351,14 +351,30 @@ class StockLevelTransaction(Transaction):
     def __init__(self, metrics_manager, conn, inputs):
         super().__init__(metrics_manager)
         self.conn = conn
-        # TODO: handle input parsing here
+        self.warehouse_id = int(inputs[0])
+        self.district_id = int(inputs[1])
+        self.stock_threshold = int(inputs[2])
+        self.num_last_orders = int(inputs[3])
 
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
                 self.start()
-                # TODO: handle txn here
-                self.end()
+                # Read next order number for district
+                curs.execute("SELECT d_next_o_id FROM district WHERE d_w_id=%s AND d_id=%s;",
+                             (self.warehouse_id, self.district_id))
+                next_order_id = curs.fetchone()
+
+                # Count number of items with stock below threshold
+                curs.execute(
+                    "SELECT COUNT(DISTINCT S_I_ID) FROM orderline JOIN stock WHERE ol_i_id = s_i_id AND ol_w_id = s_w_id AND ol_w_id=%s AND ol_d_id=%s AND s_quantity < %s AND ol_o_id >= %s AND ol_o_id < %s;",
+                    (self.warehouse_id, self.district_id, self.stock_threshold, next_order_id - self.num_last_orders,
+                     next_order_id))
+                num_items = curs.fetchone()
+
+                # Add to output
+                self.outputs["Number of items below stock threshold"] = num_items
+        self.end()
 
 
 class PopularItemTransaction(Transaction):
