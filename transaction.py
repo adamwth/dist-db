@@ -1,6 +1,7 @@
-import sys
-from datetime import datetime
 from abc import ABC, abstractmethod
+from datetime import datetime
+from decimal import Decimal
+import sys
 
 
 # Returns "(%s, %s, ...), (%s, %s, ...)" meant to be used for VALUES
@@ -182,7 +183,8 @@ class PaymentTransaction(Transaction):
         self.warehouse_id = int(inputs[0])
         self.district_id = int(inputs[1])
         self.customer_id = int(inputs[2])
-        self.payment = int(inputs[3])
+        self.payment = float(inputs[3])
+        self.payment_decimal = Decimal(inputs[3])
 
     def run(self):
         with self.conn:
@@ -194,7 +196,7 @@ class PaymentTransaction(Transaction):
                     (self.warehouse_id,))
                 w_ytd, w_street1, w_street2, w_city, w_state, w_zip = curs.fetchone()
                 curs.execute("UPDATE warehouse SET w_ytd = %s WHERE w_id=%s;",
-                             (w_ytd + self.payment, self.warehouse_id))
+                             (w_ytd + self.payment_decimal, self.warehouse_id))
 
                 # Fetch and update district details
                 curs.execute(
@@ -202,14 +204,14 @@ class PaymentTransaction(Transaction):
                     (self.warehouse_id, self.district_id))
                 d_ytd, d_street1, d_street2, d_city, d_state, d_zip = curs.fetchone()
                 curs.execute("UPDATE district SET d_ytd = %s WHERE d_w_id=%s AND d_id=%s;",
-                             (d_ytd + self.payment, self.warehouse_id, self.district_id))
+                             (d_ytd + self.payment_decimal, self.warehouse_id, self.district_id))
 
                 # Fetch and update customer details
                 curs.execute(
                     "SELECT c_first, c_middle, c_last, c_street_1, c_street_2, c_city, c_state, c_zip, c_phone, c_since, c_credit, c_credit_lim, c_discount, c_balance, c_ytd_payment, c_payment_cnt FROM customer WHERE c_w_id=%s AND c_d_id=%s AND c_id=%s;",
                     (self.warehouse_id, self.district_id, self.customer_id))
                 first_name, middle_name, last_name, c_street1, c_street2, c_city, c_state, c_zip, c_phone, c_since, c_credit, c_credit_lim, c_discount, c_balance, c_ytd, c_payment_count = curs.fetchone()
-                new_balance = c_balance - self.payment
+                new_balance = c_balance - self.payment_decimal
                 new_ytd_payment = c_ytd + self.payment
                 new_payment_cnt = c_payment_count + 1
                 curs.execute(
@@ -218,19 +220,19 @@ class PaymentTransaction(Transaction):
                      self.customer_id))
 
                 # Add to output dict
-                self.outputs["Customer identifier"] = "(%d, %d, %d)".format(self.warehouse_id, self.district_id,
+                self.outputs["Customer identifier"] = "({}, {}, {})".format(self.warehouse_id, self.district_id,
                                                                             self.customer_id)
-                self.outputs["Customer name"] = "%s %s %s".format(first_name, middle_name, last_name)
-                self.outputs["Customer address"] = "%s %s %s %s %s".format(c_street1, c_street2, c_city, c_state, c_zip)
+                self.outputs["Customer name"] = "{} {} {}".format(first_name, middle_name, last_name)
+                self.outputs["Customer address"] = "{} {} {} {} {}".format(c_street1, c_street2, c_city, c_state, c_zip)
                 self.outputs["Customer phone"] = c_phone
                 self.outputs["Customer creation date"] = c_since
                 self.outputs["Customer credit"] = c_credit
                 self.outputs["Customer credit limit"] = c_credit_lim
                 self.outputs["Customer discount"] = c_discount
                 self.outputs["Customer balance"] = new_balance
-                self.outputs["Warehouse address"] = "%s %s %s %s %s".format(w_street1, w_street2, w_city, w_state,
+                self.outputs["Warehouse address"] = "{} {} {} {} {}".format(w_street1, w_street2, w_city, w_state,
                                                                             w_zip)
-                self.outputs["District address"] = "%s %s %s %s %s".format(d_street1, d_street2, d_city, d_state, d_zip)
+                self.outputs["District address"] = "{} {} {} {} {}".format(d_street1, d_street2, d_city, d_state, d_zip)
                 self.outputs["Payment"] = self.payment
         self.end()
 
