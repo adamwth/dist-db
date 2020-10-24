@@ -241,7 +241,6 @@ class DeliveryTransaction(Transaction):
     def __init__(self, metrics_manager, conn, inputs):
         super().__init__(metrics_manager)
         self.conn = conn
-        # TODO: handle input parsing here
         self.warehouse_id = int(inputs[0])
         self.carrier_id = int(inputs[1])
 
@@ -252,7 +251,7 @@ class DeliveryTransaction(Transaction):
 
                 # Retrieve orders to be processed by carrier
                 curs.execute(
-                    "SELECT o_w_id, o_d_id, MIN(o_id), o_c_id FROM order GROUP BY o_d_id HAVING o_carrier_id=null AND o_w_id=%s;",
+                    "SELECT o_w_id, o_d_id, o_id , o_c_id FROM \"order\" WHERE (o_w_id, o_d_id, o_id) IN (SELECT o_w_id, o_d_id, MIN(o_id) FROM \"order\" GROUP BY o_w_id, o_d_id, o_carrier_id HAVING o_carrier_id IS NULL AND o_w_id=%s);",
                     (self.warehouse_id,))
                 orders = curs.fetchall()
 
@@ -270,13 +269,13 @@ class DeliveryTransaction(Transaction):
                 for order in orders:
                     order_keys.extend(order[:3])
                 curs.execute(
-                    "UPDATE order SET o_carrier_id=%s WHERE (o_w_id, o_d_id, o_id) IN (VALUES " + values_placeholder + ");",
+                    "UPDATE \"order\" SET o_carrier_id=%s WHERE (o_w_id, o_d_id, o_id) IN (VALUES " + values_placeholder + ");",
                     (self.carrier_id, *order_keys))
 
                 # Update order lines and fetch order amounts
                 delivery_date = datetime.now()
                 curs.execute(
-                    "UPDATE orderline SET o_delivery_d=%s WHERE (ol_w_id, ol_d_id, ol_o_id) IN (VALUES " + values_placeholder + ") RETURNING ol_w_id, ol_d_id, ol_o_id, ol_number, ol_amount;",
+                    "UPDATE orderline SET ol_delivery_d=%s WHERE (ol_w_id, ol_d_id, ol_o_id) IN (VALUES " + values_placeholder + ") RETURNING ol_w_id, ol_d_id, ol_o_id, ol_number, ol_amount;",
                     (delivery_date, *order_keys))
 
                 order_lines = curs.fetchall()
