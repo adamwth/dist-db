@@ -43,18 +43,18 @@ class NewOrderTransaction(Transaction):
     def __init__(self, metrics_manager, conn, inputs):
         super().__init__(metrics_manager)
         self.conn = conn
-        self.warehouse_id = int(inputs[0])
-        self.district_id = int(inputs[1])
-        self.customer_id = int(inputs[2])
+        self.customer_id = int(inputs[0])
+        self.warehouse_id = int(inputs[1])
+        self.district_id = int(inputs[2])
 
         num_items = int(inputs[3])
         self.items = {}
         for i in range(num_items):
-            start_index = i * 3 + 2
+            item = inputs[4 + i]
             new_item = {
-                "item_no": int(inputs[start_index]),
-                "supplying_warehouse_no": inputs[start_index + 1],
-                "quantity": inputs[start_index + 2],
+                "item_no": int(item[0]),
+                "supplying_warehouse_no": int(item[1]),
+                "quantity": int(item[2]),
                 "ol_number": i
             }
             self.items[new_item["item_no"]] = new_item
@@ -76,7 +76,7 @@ class NewOrderTransaction(Transaction):
                 all_local = 1 if all(
                     [x["supplying_warehouse_no"] == self.warehouse_id for x in self.items.values()]) else 0
                 entry_date = datetime.now()
-                curs.execute("INSERT INTO order VALUES (%s, %s, %s, %s, %s, %s, %s, %s);", (
+                curs.execute("INSERT INTO \"order\" VALUES (%s, %s, %s, %s, %s, %s, %s, %s);", (
                     self.warehouse_id, self.district_id, order_id, self.customer_id, None, len(self.items), all_local,
                     entry_date))
 
@@ -88,8 +88,8 @@ class NewOrderTransaction(Transaction):
                     stock_keys.append(self.warehouse_id)
                     stock_keys.append(item["item_no"])
                 curs.execute(
-                    "SELECT s_w_id, s_i_id, s_quantity, s_ytd, s_order_cnt, s_remote_cnt, s_dist_%s FROM stock WHERE (s_w_id, s_i_id) IN (VALUES " + values_placeholder + ");",
-                    (str(self.district_id).zfill(2), *stock_keys))
+                    "SELECT s_w_id, s_i_id, s_quantity, s_ytd, s_order_cnt, s_remote_cnt, %s FROM stock WHERE (s_w_id, s_i_id) IN (VALUES " + values_placeholder + ");",
+                    ("s_dist_" + str(self.district_id).zfill(2), *stock_keys))
                 stocks = curs.fetchall()
 
                 updated_stocks = []
@@ -140,7 +140,7 @@ class NewOrderTransaction(Transaction):
                     new_order_lines.extend([self.warehouse_id, self.district_id, order_id, item["ol_number"],
                                             item["item_no"], None, item["cost"], item["supplying_warehouse_no"],
                                             item["quantity"], item["stocks"]["dist_info"]])
-                curs.execute("INSERT INTO orderline VALUES " + values_placeholder + ";")
+                curs.execute("INSERT INTO orderline VALUES " + values_placeholder + ";", new_order_lines)
 
                 # Retrieve user information
                 curs.execute(
@@ -150,13 +150,13 @@ class NewOrderTransaction(Transaction):
 
                 # Retrieve warehouse tax
                 curs.execute("SELECT w_tax FROM warehouse WHERE w_id=%s;", (self.warehouse_id,))
-                warehouse_tax = curs.fetchone()
+                warehouse_tax = curs.fetchone()[0]
 
                 # Calculate total amount
                 total_amount = total_amount * (1 + district_tax + warehouse_tax) * (1 - discount)
 
                 # Add to output dict
-                self.outputs["Customer identifier"] = "(%d, %d, %d)".format(self.warehouse_id, self.district_id,
+                self.outputs["Customer identifier"] = "({}, {}, {})".format(self.warehouse_id, self.district_id,
                                                                             self.customer_id)
                 self.outputs["Customer last name"] = last_name
                 self.outputs["Customer credit"] = credit
@@ -168,8 +168,8 @@ class NewOrderTransaction(Transaction):
                 self.outputs["Num items"] = len(self.items)
                 self.outputs["Total amount"] = total_amount
                 for item in self.items.values():
-                    item_name = "Item %s".format(item["item_no"])
-                    self.outputs[item_name] = "%s x %d from warehouse %d costing %d with remaining stock %d".format(
+                    item_name = "Item {}".format(item["item_no"])
+                    self.outputs[item_name] = "{} x {} from warehouse {} costing {} with remaining stock {}".format(
                         item["name"], item["quantity"], item["supplying_warehouse_no"], item["cost"],
                         item["stocks"]["quantity"])
         self.end()
