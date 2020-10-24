@@ -239,13 +239,69 @@ class DeliveryTransaction(Transaction):
         super().__init__(metrics_manager)
         self.conn = conn
         # TODO: handle input parsing here
+        self.warehouse_id = int(inputs[0])
+        self.carrier_id = int(inputs[1])
 
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
                 self.start()
-                # TODO: handle txn here
-                self.end()
+
+                # Retrieve orders to be processed by carrier
+                curs.execute(
+                    "SELECT O_W_ID, O_D_ID, MIN(O_ID), O_C_ID FROM Order GROUP BY O_D_ID HAVING O_CARRIER_ID=null AND O_W_ID=%s;",
+                    (self.warehouse_id,))
+                orders = curs.fetchall()
+
+                # Form list of customers to track
+                customer_amounts = {}
+                order_customer_mapping = {}
+                for order in orders:
+                    customer_id = (*order[:2], order[3])
+                    order_customer_mapping[tuple(order[:3])] = customer_id
+                    customer_amounts[customer_id] = 0
+
+                # Update orders
+                values_placeholder = create_values_placeholder(3, len(orders))
+                order_keys = []
+                for order in orders:
+                    order_keys.extend(order[:3])
+                curs.execute(
+                    "UPDATE Order SET O_CARRIER_ID=%s WHERE (O_W_ID, O_D_ID, O_ID) IN (VALUES " + values_placeholder + ");",
+                    (self.carrier_id, *order_keys))
+
+                # Update order lines and fetch order amounts
+                delivery_date = datetime.now()
+                curs.execute(
+                    "UPDATE OrderLine SET O_DELIVERY_D=%s WHERE (OL_W_ID, OL_D_ID, OL_O_ID) IN (VALUES " + values_placeholder + ") RETURNING OL_W_ID, OL_D_ID, OL_O_ID, OL_NUMBER, OL_AMOUNT;",
+                    (delivery_date, *order_keys))
+
+                order_lines = curs.fetchall()
+                for order_line in order_lines:
+                    customer_id = order_customer_mapping[tuple(order_line[:3])]
+                    customer_amounts[customer_id] += order_line[-1]
+
+                # Fetch and update customers
+                values_placeholder = create_values_placeholder(3, len(customer_amounts))
+                customer_keys = []
+                for customer_id in customer_amounts.keys():
+                    customer_keys.extend(customer_id)
+                curs.execute(
+                    "SELECT C_W_ID, C_D_ID, C_ID, C_BALANCE, C_DELIVERY_CNT FROM Customer WHERE (C_W_ID, C_D_ID, C_ID) IN (VALUES " + values_placeholder + ");",
+                    customer_keys)
+
+                customers = curs.fetchall()
+                values_placeholder = create_values_placeholder(5, len(customers))
+                updated_customers_vals = []
+                for customer in customers:
+                    customer_id = tuple(customer[:3])
+                    updated_customers_vals.extend(
+                        (*customer_id, customer[3] + customer_amounts[customer_id], customer[4] + 1))
+
+                curs.execute(
+                    "UPSERT INTO CUSTOMER (C_W_ID, C_D_ID, C_ID, C_BALANCE, C_DELIVERY_CNT) VALUES " + values_placeholder + ";",
+                    updated_customers_vals)
+        self.end()
 
 
 class OrderStatusTransaction(Transaction):
