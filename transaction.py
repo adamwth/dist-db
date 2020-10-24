@@ -309,14 +309,42 @@ class OrderStatusTransaction(Transaction):
     def __init__(self, metrics_manager, conn, inputs):
         super().__init__(metrics_manager)
         self.conn = conn
-        # TODO: handle input parsing here
+        self.warehouse_id = int(inputs[0])
+        self.district_id = int(inputs[1])
+        self.customer_id = int(inputs[2])
 
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
                 self.start()
-                # TODO: handle txn here
-                self.end()
+
+                # Fetch customer information
+                curs.execute(
+                    "SELECT c_first, c_middle, c_last, c_balance FROM customer WHERE c_w_id=%s AND c_d_id=%s AND c_id=%s;",
+                    (self.warehouse_id, self.district_id, self.customer_id))
+                first_name, middle_name, last_name, balance = curs.fetchone()
+
+                # Fetch items in last order
+                curs.execute(
+                    "SELECT o_id, o_entry_d, o_carrier_id, ol_i_id, ol_supply_w_id, ol_quantity, ol_amount, ol_delivery_d FROM order JOIN orderline WHERE ol_w_id = o_w_id AND ol_d_id = o_d_id AND ol_o_id = o_id AND o_c_id = c_id ORDER BY o_entry_d DESC LIMIT 1;")
+                items = curs.fetchall()
+
+                # Add to output
+                self.outputs["Customer name"] = "%s %s %s".format(first_name, middle_name, last_name)
+                self.outputs["Customer balance"] = balance
+
+                order_items = []
+                for item in items:
+                    order_item = {"number": item[3], "supplying_warehouse": item[4], "quantity": item[5],
+                                  "price": item[6], "delivery_date": item[7]}
+                    order_items.append(order_item)
+                    item_name = "Item %s".format(item[3])
+                    self.outputs[item_name] = "%d from warehouse %d costing %d delivered at %d".format(item[5], item[4],
+                                                                                                       item[6], item[7])
+                if len(items) > 0:
+                    order_name = "Order %s".format(item[0])
+                    self.outputs[order_name] = "ordered at %s with carrier %d".format(item[1], item[2])
+        self.end()
 
 
 class StockLevelTransaction(Transaction):
