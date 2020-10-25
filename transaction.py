@@ -7,6 +7,8 @@ import sys
 # Returns "(%s, %s, ...), (%s, %s, ...)" meant to be used for VALUES
 # args determines number of args in each row
 # rows determines number of rows for VALUES
+
+
 def create_values_placeholder(args, rows):
     single_row = "(" + ("%s," * args)[:-1] + "),"
     return (single_row * rows)[:-1]
@@ -78,18 +80,21 @@ class NewOrderTransaction(Transaction):
                     [x["supplying_warehouse_no"] == self.warehouse_id for x in self.items.values()]) else 0
                 entry_date = datetime.now()
                 curs.execute("INSERT INTO \"order\" VALUES (%s, %s, %s, %s, %s, %s, %s, %s);", (
-                    self.warehouse_id, self.district_id, order_id, self.customer_id, None, len(self.items), all_local,
+                    self.warehouse_id, self.district_id, order_id, self.customer_id, None, len(
+                        self.items), all_local,
                     entry_date))
 
                 # Retrieve stock information for items
                 total_amount = 0
-                values_placeholder = create_values_placeholder(2, len(self.items))
+                values_placeholder = create_values_placeholder(
+                    2, len(self.items))
                 stock_keys = []
                 for item in self.items.values():
                     stock_keys.append(self.warehouse_id)
                     stock_keys.append(item["item_no"])
                 curs.execute(
-                    "SELECT s_w_id, s_i_id, s_quantity, s_ytd, s_order_cnt, s_remote_cnt, %s FROM stock WHERE (s_w_id, s_i_id) IN (VALUES " + values_placeholder + ");",
+                    "SELECT s_w_id, s_i_id, s_quantity, s_ytd, s_order_cnt, s_remote_cnt, %s FROM stock WHERE (s_w_id, s_i_id) IN (VALUES " +
+                    values_placeholder + ");",
                     ("s_dist_" + str(self.district_id).zfill(2), *stock_keys))
                 stocks = curs.fetchall()
 
@@ -115,33 +120,39 @@ class NewOrderTransaction(Transaction):
                     }
 
                 # Update stock information for items (use upsert for single update)
-                values_placeholder = create_values_placeholder(6, len(updated_stocks))
+                values_placeholder = create_values_placeholder(
+                    6, len(updated_stocks))
                 updated_stocks_vals = []
                 for stock in updated_stocks:
                     updated_stocks_vals.extend(stock[:-1])
                 curs.execute(
-                    "UPSERT INTO stock (s_w_id, s_i_id, s_quantity, s_ytd, s_order_cnt, s_remote_cnt) VALUES " + values_placeholder + ";",
+                    "UPSERT INTO stock (s_w_id, s_i_id, s_quantity, s_ytd, s_order_cnt, s_remote_cnt) VALUES " +
+                    values_placeholder + ";",
                     updated_stocks_vals)
 
                 # Retrieve item information, track item costs for order
-                values_placeholder = create_values_placeholder(len(self.items), 1)
+                values_placeholder = create_values_placeholder(
+                    len(self.items), 1)
                 curs.execute("SELECT i_id, i_name, i_price FROM item WHERE i_id IN " + values_placeholder + ";",
                              list(self.items.keys()))
                 items = curs.fetchall()
                 for item in items:
                     i_id, name, price = item
-                    self.items[i_id]["cost"] = price * self.items[i_id]["quantity"]
+                    self.items[i_id]["cost"] = price * \
+                        self.items[i_id]["quantity"]
                     self.items[i_id]["name"] = name
                     total_amount += self.items[i_id]["cost"]
 
                 # Add new order lines
-                values_placeholder = create_values_placeholder(10, len(self.items))
+                values_placeholder = create_values_placeholder(
+                    10, len(self.items))
                 new_order_lines = []
                 for item in self.items.values():
                     new_order_lines.extend([self.warehouse_id, self.district_id, order_id, item["ol_number"],
                                             item["item_no"], None, item["cost"], item["supplying_warehouse_no"],
                                             item["quantity"], item["stocks"]["dist_info"]])
-                curs.execute("INSERT INTO orderline VALUES " + values_placeholder + ";", new_order_lines)
+                curs.execute("INSERT INTO orderline VALUES " +
+                             values_placeholder + ";", new_order_lines)
 
                 # Retrieve user information
                 curs.execute(
@@ -150,11 +161,13 @@ class NewOrderTransaction(Transaction):
                 last_name, credit, discount = curs.fetchone()
 
                 # Retrieve warehouse tax
-                curs.execute("SELECT w_tax FROM warehouse WHERE w_id=%s;", (self.warehouse_id,))
+                curs.execute(
+                    "SELECT w_tax FROM warehouse WHERE w_id=%s;", (self.warehouse_id,))
                 warehouse_tax = curs.fetchone()[0]
 
                 # Calculate total amount
-                total_amount = total_amount * (1 + district_tax + warehouse_tax) * (1 - discount)
+                total_amount = total_amount * \
+                    (1 + district_tax + warehouse_tax) * (1 - discount)
 
                 # Add to output dict
                 self.outputs["Customer identifier"] = "({}, {}, {})".format(self.warehouse_id, self.district_id,
@@ -222,8 +235,10 @@ class PaymentTransaction(Transaction):
                 # Add to output dict
                 self.outputs["Customer identifier"] = "({}, {}, {})".format(self.warehouse_id, self.district_id,
                                                                             self.customer_id)
-                self.outputs["Customer name"] = "{} {} {}".format(first_name, middle_name, last_name)
-                self.outputs["Customer address"] = "{} {} {} {} {}".format(c_street1, c_street2, c_city, c_state, c_zip)
+                self.outputs["Customer name"] = "{} {} {}".format(
+                    first_name, middle_name, last_name)
+                self.outputs["Customer address"] = "{} {} {} {} {}".format(
+                    c_street1, c_street2, c_city, c_state, c_zip)
                 self.outputs["Customer phone"] = c_phone
                 self.outputs["Customer creation date"] = c_since
                 self.outputs["Customer credit"] = c_credit
@@ -232,7 +247,8 @@ class PaymentTransaction(Transaction):
                 self.outputs["Customer balance"] = new_balance
                 self.outputs["Warehouse address"] = "{} {} {} {} {}".format(w_street1, w_street2, w_city, w_state,
                                                                             w_zip)
-                self.outputs["District address"] = "{} {} {} {} {}".format(d_street1, d_street2, d_city, d_state, d_zip)
+                self.outputs["District address"] = "{} {} {} {} {}".format(
+                    d_street1, d_street2, d_city, d_state, d_zip)
                 self.outputs["Payment"] = self.payment
         self.end()
 
@@ -269,13 +285,15 @@ class DeliveryTransaction(Transaction):
                 for order in orders:
                     order_keys.extend(order[:3])
                 curs.execute(
-                    "UPDATE \"order\" SET o_carrier_id=%s WHERE (o_w_id, o_d_id, o_id) IN (VALUES " + values_placeholder + ");",
+                    "UPDATE \"order\" SET o_carrier_id=%s WHERE (o_w_id, o_d_id, o_id) IN (VALUES " +
+                    values_placeholder + ");",
                     (self.carrier_id, *order_keys))
 
                 # Update order lines and fetch order amounts
                 delivery_date = datetime.now()
                 curs.execute(
-                    "UPDATE orderline SET ol_delivery_d=%s WHERE (ol_w_id, ol_d_id, ol_o_id) IN (VALUES " + values_placeholder + ") RETURNING ol_w_id, ol_d_id, ol_o_id, ol_number, ol_amount;",
+                    "UPDATE orderline SET ol_delivery_d=%s WHERE (ol_w_id, ol_d_id, ol_o_id) IN (VALUES " +
+                    values_placeholder + ") RETURNING ol_w_id, ol_d_id, ol_o_id, ol_number, ol_amount;",
                     (delivery_date, *order_keys))
 
                 order_lines = curs.fetchall()
@@ -284,16 +302,19 @@ class DeliveryTransaction(Transaction):
                     customer_amounts[customer_id] += order_line[-1]
 
                 # Fetch and update customers
-                values_placeholder = create_values_placeholder(3, len(customer_amounts))
+                values_placeholder = create_values_placeholder(
+                    3, len(customer_amounts))
                 customer_keys = []
                 for customer_id in customer_amounts.keys():
                     customer_keys.extend(customer_id)
                 curs.execute(
-                    "SELECT c_w_id, c_d_id, c_id, c_balance, c_delivery_cnt FROM customer WHERE (c_w_id, c_d_id, c_id) IN (VALUES " + values_placeholder + ");",
+                    "SELECT c_w_id, c_d_id, c_id, c_balance, c_delivery_cnt FROM customer WHERE (c_w_id, c_d_id, c_id) IN (VALUES " +
+                    values_placeholder + ");",
                     customer_keys)
 
                 customers = curs.fetchall()
-                values_placeholder = create_values_placeholder(5, len(customers))
+                values_placeholder = create_values_placeholder(
+                    5, len(customers))
                 updated_customers_vals = []
                 for customer in customers:
                     customer_id = tuple(customer[:3])
@@ -301,7 +322,8 @@ class DeliveryTransaction(Transaction):
                         (*customer_id, customer[3] + customer_amounts[customer_id], customer[4] + 1))
 
                 curs.execute(
-                    "UPSERT INTO customer (c_w_id, c_d_id, c_id, c_balance, c_delivery_cnt) VALUES " + values_placeholder + ";",
+                    "UPSERT INTO customer (c_w_id, c_d_id, c_id, c_balance, c_delivery_cnt) VALUES " +
+                    values_placeholder + ";",
                     updated_customers_vals)
         self.end()
 
@@ -331,7 +353,8 @@ class OrderStatusTransaction(Transaction):
                 items = curs.fetchall()
 
                 # Add to output
-                self.outputs["Customer name"] = "%s %s %s".format(first_name, middle_name, last_name)
+                self.outputs["Customer name"] = "%s %s %s".format(
+                    first_name, middle_name, last_name)
                 self.outputs["Customer balance"] = balance
 
                 order_items = []
@@ -344,7 +367,8 @@ class OrderStatusTransaction(Transaction):
                                                                                                        item[6], item[7])
                 if len(items) > 0:
                     order_name = "Order %s".format(item[0])
-                    self.outputs[order_name] = "ordered at %s with carrier %d".format(item[1], item[2])
+                    self.outputs[order_name] = "ordered at %s with carrier %d".format(
+                        item[1], item[2])
         self.end()
 
 
@@ -410,11 +434,26 @@ class RelatedCustomerTransaction(Transaction):
     def __init__(self, metrics_manager, conn, inputs):
         super().__init__(metrics_manager)
         self.conn = conn
-        # TODO: handle input parsing here
+        self.warehouse_id = int(inputs[0])
+        self.district_id = int(inputs[1])
+        self.customer_id = int(inputs[2])
 
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
                 self.start()
-                # TODO: handle txn here
+                with open('test.sql', 'r') as f:
+                    curs.execute(f.read(), {
+                        "input_warehouse_id": self.warehouse_id,
+                        "input_customer_id": self.customer_id
+                    })
+                    relatedCustomers = curs.fetchall()
+                    self.outputs['related customers'] = {
+                        "input customer": {
+                            warehouse_id: self.warehouse_id,
+                            district_id: self.district_id,
+                            customer_id: self.customer_id
+                        },
+                        "related customers": relatedCustomers
+                    }
                 self.end()
