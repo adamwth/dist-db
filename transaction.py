@@ -138,8 +138,7 @@ class NewOrderTransaction(Transaction):
                 items = curs.fetchall()
                 for item in items:
                     i_id, name, price = item
-                    self.items[i_id]["cost"] = price * \
-                        self.items[i_id]["quantity"]
+                    self.items[i_id]["cost"] = price * self.items[i_id]["quantity"]
                     self.items[i_id]["name"] = name
                     total_amount += self.items[i_id]["cost"]
 
@@ -166,8 +165,7 @@ class NewOrderTransaction(Transaction):
                 warehouse_tax = curs.fetchone()[0]
 
                 # Calculate total amount
-                total_amount = total_amount * \
-                    (1 + district_tax + warehouse_tax) * (1 - discount)
+                total_amount = total_amount * (1 + district_tax + warehouse_tax) * (1 - discount)
 
                 # Add to output dict
                 self.outputs["Customer identifier"] = "({}, {}, {})".format(self.warehouse_id, self.district_id,
@@ -442,18 +440,19 @@ class RelatedCustomerTransaction(Transaction):
         with self.conn:
             with self.conn.cursor() as curs:
                 with open('related-customer.sql', 'r') as f:
+                    related_customer_query = f.read()
                     self.start()
-                    curs.execute(f.read(), {
+
+                    curs.execute(related_customer_query, {
                         "input_warehouse_id": self.warehouse_id,
-                        "input_customer_id": self.customer_id
+                        "input_customer_id": self.customer_id,
+                        "input_district_id": self.district_id
                     })
-                    relatedCustomers = curs.fetchall()
-                    self.outputs['related customers'] = {
-                        "input customer": {
-                            warehouse_id: self.warehouse_id,
-                            district_id: self.district_id,
-                            customer_id: self.customer_id
-                        },
-                        "related customers": relatedCustomers
-                    }
+                    related_customers = curs.fetchall()
+
+                    # Add to outputs
+                    self.outputs["Input customer identifier"] = "({}, {}, {})".format(self.warehouse_id,
+                                                                                      self.district_id,
+                                                                                      self.customer_id)
+                    self.outputs['Related customers'] = ["({}, {}, {})".format(*x) for x in related_customers]
         self.end()
