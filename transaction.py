@@ -441,8 +441,8 @@ class RelatedCustomerTransaction(Transaction):
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
-                self.start()
                 with open('related-customer.sql', 'r') as f:
+                    self.start()
                     curs.execute(f.read(), {
                         "input_warehouse_id": self.warehouse_id,
                         "input_customer_id": self.customer_id
@@ -456,4 +456,4 @@ class RelatedCustomerTransaction(Transaction):
                         },
                         "related customers": relatedCustomers
                     }
-                self.end()
+        self.end()
