@@ -5,6 +5,8 @@ import transaction
 import argparse
 import psycopg2
 from psycopg2.errors import SerializationFailure
+import random
+import time
 
 TXN_ID = {
     "NEW_ORDER": "N",
@@ -117,11 +119,17 @@ def main():
     args.file.close()
 
     for txn in transactions:
+        retry_count = 0
         while True:
             try:
                 txn.run()
                 break
             except SerializationFailure as e:
+                sleep_ms = (2 ** retry_count) * 0.1 * (random.random() + 0.5)
+                time.sleep(sleep_ms / 1000)
+                retry_count += 1
+                if retry_count > 10:
+                    sys.stderr.write("Transaction retried: " + str(retry_count))
                 continue
 
         txn.print_outputs()
