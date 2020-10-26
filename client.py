@@ -4,6 +4,7 @@ from datetime import timedelta
 import transaction
 import argparse
 import psycopg2
+from psycopg2.errors import SerializationFailure
 
 TXN_ID = {
     "NEW_ORDER": "N",
@@ -116,7 +117,13 @@ def main():
     args.file.close()
 
     for txn in transactions:
-        txn.run()
+        while True:
+            try:
+                txn.run()
+                break
+            except SerializationFailure as e:
+                continue
+
         txn.print_outputs()
 
     metrics.output_metrics()

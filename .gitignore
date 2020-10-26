@@ -1,6 +1,7 @@
 # Project files
 data-files
 xact-files
+*.out
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
