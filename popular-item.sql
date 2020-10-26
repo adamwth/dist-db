@@ -1,26 +1,20 @@
-WITH lastLOrders AS (
+WITH lastLOrderLines AS (
     SELECT
         *
     FROM
         district
         JOIN order ON d_w_id = o_w_id
         AND d_id = o_d_id
+        JOIN orderLine ON o_id = ol_o_id
     WHERE
         o_id < d_next_o_id
+        AND ol_d_id = %(input_district_id) s
+        AND ol_w_id = %(input_warehouse_id) s
     ORDER BY
         o_id DESC
     LIMIT
         %(input_num_last_orders) s
-), lastLOrderLines as (
-    SELECT
-        *
-    FROM
-        lastLOrders llo
-        JOIN orderLine ol ON llo.o_id = ol.ol_o_id
-    WHERE
-        ol.ol_d_id = %(input_warehouse_id) s
-        AND ol.ol_w_id = %(input_district_id) s
-),
+)
 SELECT
     ol_o_id,
     o_entry_d,
