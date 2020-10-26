@@ -458,14 +458,61 @@ class PopularItemTransaction(Transaction):
     def __init__(self, metrics_manager, conn, inputs):
         super().__init__(metrics_manager)
         self.conn = conn
-        # TODO: handle input parsing here
+        self.warehouse_id = int(input[0])
+        self.district_id = int(input[1])
+        self.numLastOrders = int(input[2])
 
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
-                self.start()
-                # TODO: handle txn here
-                self.end()
+                with open('popular-item.sql', 'r') as f:
+                    popular_items_query = f.read()
+                    self.start()
+
+                    # Get all orders with popular items
+                    curs.execute(popular_items_query)
+                    orders = curs.fetchall()
+
+                    # Dictionaries to store output
+                    orderMap = {}
+                    popItemStatistics = {}
+
+                    # Store order info and popular items for each order
+                    for x in orders:
+                        order_id = x[0]
+                        order_entry_date = x[1]
+                        c_first = x[2]
+                        c_middle = x[3]
+                        c_last = x[4]
+                        item_name = x[5]
+                        quantity = x[6]
+                        if order_id not in orderMap:
+                            orderMap[order_id] = {
+                                "order_id": order_id,
+                                "order_entry_date": order_entry_date,
+                                "c_first": c_first,
+                                "c_middle": c_middle,
+                                "c_last": c_last,
+                                "pop_items": {}
+                            }
+                        orderMap[order_id]['pop_items'][item_name] = quantity
+                        popItemStatistics[item_name] = 0
+
+                    # Store percentage of orders that contain each popular item
+                    totalOrders = len(orderMap)
+                    for key in popItemStatistics:
+                        numContainingOrders = 0
+                        for _, value in orderMap.items():
+                            if key in value['pop_items']:
+                                numContainingOrders += 1
+                        popItemStatistics[key] = numContainingOrders / \
+                            totalOrders
+
+                    self.outputs["Orders with popular items"] = orderMap
+
+                    self.outputs['Popular item statistics'] = popItemStatistics
+
+        self.end()
 
 
 class TopBalanceTransaction(Transaction):
