@@ -386,12 +386,16 @@ class OrderStatusTransaction(Transaction):
                 # Fetch customer information
                 curs.execute(
                     """
-                    SELECT c_first, c_middle, c_last, c_balance 
+                    SELECT c_first, c_middle, c_last, c_balance, o_id
                     FROM customer 
-                    WHERE c_w_id=%s AND c_d_id=%s AND c_id=%s;
+                    JOIN "order"
+                    ON o_w_id = c_w_id AND o_d_id = c_d_id AND o_c_id = c_id
+                    WHERE c_w_id=%s AND c_d_id=%s AND c_id=%s
+                    ORDER BY o_id DESC
+                    LIMIT 1;
                     """,
                     (self.warehouse_id, self.district_id, self.customer_id))
-                first_name, middle_name, last_name, balance = curs.fetchone()
+                first_name, middle_name, last_name, balance, last_o_id = curs.fetchone()
 
                 # Fetch items in last order
                 curs.execute(
@@ -399,9 +403,9 @@ class OrderStatusTransaction(Transaction):
                     SELECT o_id, o_entry_d, o_carrier_id, ol_i_id, ol_supply_w_id, ol_quantity, ol_amount, ol_delivery_d 
                     FROM "order" 
                     JOIN orderline ON ol_w_id = o_w_id AND ol_d_id = o_d_id AND ol_o_id = o_id  
-                    WHERE o_w_id=%s AND o_d_id=%s AND o_c_id=%s ORDER BY o_id DESC LIMIT 1;
+                    WHERE o_w_id=%s AND o_d_id=%s AND o_id=%s;
                     """,
-                    (self.warehouse_id, self.district_id, self.customer_id))
+                    (self.warehouse_id, self.district_id, last_o_id))
                 items = curs.fetchall()
 
                 # Add to output
