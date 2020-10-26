@@ -288,17 +288,25 @@ class DeliveryTransaction(Transaction):
                 # Retrieve orders to be processed by carrier
                 curs.execute(
                     """
+                    SELECT o_w_id, o_d_id, MIN(o_id) 
+                    FROM "order" 
+                    GROUP BY o_w_id, o_d_id, o_carrier_id 
+                    HAVING o_carrier_id IS NULL AND o_w_id=%s
+                    """,
+                    (self.warehouse_id,))
+                selected_orders = curs.fetchall()
+
+                values_placeholder = create_values_placeholder(3, len(selected_orders))
+                order_keys = []
+                for order in selected_orders:
+                    order_keys.extend(order)
+                curs.execute(
+                    """
                     SELECT o_w_id, o_d_id, o_id , o_c_id 
                     FROM "order" 
                     WHERE (o_w_id, o_d_id, o_id) 
-                    IN (
-                        SELECT o_w_id, o_d_id, MIN(o_id) 
-                        FROM "order" 
-                        GROUP BY o_w_id, o_d_id, o_carrier_id 
-                        HAVING o_carrier_id IS NULL AND o_w_id=%s
-                    );
-                    """,
-                    (self.warehouse_id,))
+                    IN (VALUES """ + values_placeholder + ");",
+                    order_keys)
                 orders = curs.fetchall()
 
                 # Form list of customers to track
@@ -310,10 +318,6 @@ class DeliveryTransaction(Transaction):
                     customer_amounts[customer_id] = 0
 
                 # Update orders
-                values_placeholder = create_values_placeholder(3, len(orders))
-                order_keys = []
-                for order in orders:
-                    order_keys.extend(order[:3])
                 curs.execute(
                     """
                     UPDATE "order" 
