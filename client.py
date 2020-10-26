@@ -123,13 +123,14 @@ def main():
         while True:
             try:
                 txn.run()
+                # Flag issue if transactions had retried more than 15 times (sleep time > 5 seconds)
+                if retry_count > 15:
+                    sys.stderr.write("Transaction retried: " + str(retry_count) + " times before completion \n")
                 break
             except SerializationFailure as e:
                 sleep_ms = (2 ** retry_count) * 0.1 * (random.random() + 0.5)
                 time.sleep(sleep_ms / 1000)
                 retry_count += 1
-                if retry_count > 10:
-                    sys.stderr.write("Transaction retried: " + str(retry_count))
                 continue
 
         txn.print_outputs()
