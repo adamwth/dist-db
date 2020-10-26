@@ -141,7 +141,7 @@ class NewOrderTransaction(Transaction):
                 for item in items:
                     i_id, name, price = item
                     self.items[i_id]["cost"] = price * \
-                        self.items[i_id]["quantity"]
+                                               self.items[i_id]["quantity"]
                     self.items[i_id]["name"] = name
                     total_amount += self.items[i_id]["cost"]
 
@@ -169,7 +169,7 @@ class NewOrderTransaction(Transaction):
 
                 # Calculate total amount
                 total_amount = total_amount * \
-                    (1 + district_tax + warehouse_tax) * (1 - discount)
+                               (1 + district_tax + warehouse_tax) * (1 - discount)
 
                 # Add to output dict
                 self.outputs["Customer identifier"] = "({}, {}, {})".format(self.warehouse_id, self.district_id,
@@ -458,9 +458,9 @@ class PopularItemTransaction(Transaction):
     def __init__(self, metrics_manager, conn, inputs):
         super().__init__(metrics_manager)
         self.conn = conn
-        self.warehouse_id = int(input[0])
-        self.district_id = int(input[1])
-        self.numLastOrders = int(input[2])
+        self.warehouse_id = int(inputs[0])
+        self.district_id = int(inputs[1])
+        self.num_last_orders = int(inputs[2])
 
     def run(self):
         with self.conn:
@@ -470,12 +470,16 @@ class PopularItemTransaction(Transaction):
                     self.start()
 
                     # Get all orders with popular items
-                    curs.execute(popular_items_query)
+                    curs.execute(popular_items_query, {
+                        "input_warehouse_id": self.warehouse_id,
+                        "input_district_id": self.district_id,
+                        "input_num_last_orders": self.num_last_orders
+                    })
                     orders = curs.fetchall()
 
                     # Dictionaries to store output
-                    orderMap = {}
-                    popItemStatistics = {}
+                    order_map = {}
+                    pop_item_statistics = {}
 
                     # Store order info and popular items for each order
                     for x in orders:
@@ -486,8 +490,8 @@ class PopularItemTransaction(Transaction):
                         c_last = x[4]
                         item_name = x[5]
                         quantity = x[6]
-                        if order_id not in orderMap:
-                            orderMap[order_id] = {
+                        if order_id not in order_map:
+                            order_map[order_id] = {
                                 "order_id": order_id,
                                 "order_entry_date": order_entry_date,
                                 "c_first": c_first,
@@ -495,22 +499,22 @@ class PopularItemTransaction(Transaction):
                                 "c_last": c_last,
                                 "pop_items": {}
                             }
-                        orderMap[order_id]['pop_items'][item_name] = quantity
-                        popItemStatistics[item_name] = 0
+                        order_map[order_id]['pop_items'][item_name] = quantity
+                        pop_item_statistics[item_name] = 0
 
                     # Store percentage of orders that contain each popular item
-                    totalOrders = len(orderMap)
-                    for key in popItemStatistics:
-                        numContainingOrders = 0
-                        for _, value in orderMap.items():
+                    total_orders = len(order_map)
+                    for key in pop_item_statistics:
+                        num_containing_orders = 0
+                        for _, value in order_map.items():
                             if key in value['pop_items']:
-                                numContainingOrders += 1
-                        popItemStatistics[key] = numContainingOrders / \
-                            totalOrders
+                                num_containing_orders += 1
+                        pop_item_statistics[key] = "{}%".format((num_containing_orders * 100 / total_orders))
 
-                    self.outputs["Orders with popular items"] = orderMap
-
-                    self.outputs['Popular item statistics'] = popItemStatistics
+                    self.outputs["District identifier"] = "({}, {})".format(self.warehouse_id, self.district_id)
+                    self.outputs["Number of last orders examined"] = total_orders
+                    self.outputs["Orders with popular items"] = order_map
+                    self.outputs['Popular item statistics'] = pop_item_statistics
 
         self.end()
 
