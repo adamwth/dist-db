@@ -140,7 +140,8 @@ class NewOrderTransaction(Transaction):
                 items = curs.fetchall()
                 for item in items:
                     i_id, name, price = item
-                    self.items[i_id]["cost"] = price * self.items[i_id]["quantity"]
+                    self.items[i_id]["cost"] = price * \
+                        self.items[i_id]["quantity"]
                     self.items[i_id]["name"] = name
                     total_amount += self.items[i_id]["cost"]
 
@@ -167,7 +168,8 @@ class NewOrderTransaction(Transaction):
                 warehouse_tax = curs.fetchone()[0]
 
                 # Calculate total amount
-                total_amount = total_amount * (1 + district_tax + warehouse_tax) * (1 - discount)
+                total_amount = total_amount * \
+                    (1 + district_tax + warehouse_tax) * (1 - discount)
 
                 # Add to output dict
                 self.outputs["Customer identifier"] = "({}, {}, {})".format(self.warehouse_id, self.district_id,
@@ -253,7 +255,8 @@ class PaymentTransaction(Transaction):
                 # Add to output dict
                 self.outputs["Customer identifier"] = "({}, {}, {})".format(self.warehouse_id, self.district_id,
                                                                             self.customer_id)
-                self.outputs["Customer name"] = "{} {} {}".format(first_name, middle_name, last_name)
+                self.outputs["Customer name"] = "{} {} {}".format(
+                    first_name, middle_name, last_name)
                 self.outputs["Customer address"] = "{} {} {} {} {}".format(
                     c_street1, c_street2, c_city, c_state, c_zip)
                 self.outputs["Customer phone"] = c_phone
@@ -398,7 +401,8 @@ class OrderStatusTransaction(Transaction):
                 items = curs.fetchall()
 
                 # Add to output
-                self.outputs["Customer name"] = "{} {} {}".format(first_name, middle_name, last_name)
+                self.outputs["Customer name"] = "{} {} {}".format(
+                    first_name, middle_name, last_name)
                 self.outputs["Customer balance"] = balance
 
                 if len(items) > 0:
@@ -468,14 +472,21 @@ class TopBalanceTransaction(Transaction):
     def __init__(self, metrics_manager, conn, inputs):
         super().__init__(metrics_manager)
         self.conn = conn
-        # TODO: handle input parsing here
 
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
-                self.start()
-                # TODO: handle txn here
-                self.end()
+                with open('top-balance.sql', 'r') as f:
+                    top_balance_query = f.read()
+                    self.start()
+                    curs.execute(top_balance_query)
+                    customers_top_balance = curs.fetchall()
+
+                    # Add to outputs
+                    self.outputs["Top 10 customers with highest balance"] = [
+                        "({}, {}, {}, {}, {}, {})".format(*x) for x in customers_top_balance]
+
+        self.end()
 
 
 class RelatedCustomerTransaction(Transaction):
@@ -504,5 +515,6 @@ class RelatedCustomerTransaction(Transaction):
                     self.outputs["Input customer identifier"] = "({}, {}, {})".format(self.warehouse_id,
                                                                                       self.district_id,
                                                                                       self.customer_id)
-                    self.outputs['Related customers'] = ["({}, {}, {})".format(*x) for x in related_customers]
+                    self.outputs['Related customers'] = [
+                        "({}, {}, {})".format(*x) for x in related_customers]
         self.end()
