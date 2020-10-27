@@ -1,6 +1,6 @@
 import math
 import sys
-from datetime import timedelta
+from datetime import timedelta, datetime
 import transaction
 import argparse
 import psycopg2
@@ -29,20 +29,26 @@ class MetricsManager:
     def __init__(self):
         # Keeps track of time taken for each transaction in milliseconds
         self.transaction_timings = []
+        self.total_time = timedelta(0)
 
     # Takes in a timedelta for a transaction
     def add(self, delta):
         self.transaction_timings.append(delta / timedelta(milliseconds=1))
 
+    def add_total_time(self, delta):
+        self.total_time = delta
+
     def output_metrics(self):
-        total_time = sum(self.transaction_timings)
         total_transactions = len(self.transaction_timings)
         sorted_transaction_timings = sorted(self.transaction_timings)
+        total_transaction_timings = sum(sorted_transaction_timings)
         sys.stderr.write("Number of executed transactions: {}\n".format(total_transactions))
-        sys.stderr.write("Total transaction execution time (in seconds): {}\n".format(total_time / 1000))
+        sys.stderr.write("Total transaction execution time (in seconds): {}\n".format(self.total_time.total_seconds()))
         sys.stderr.write(
-            "Transaction throughput (transactions / s): {}\n".format(total_transactions / (total_time / 1000)))
-        sys.stderr.write("Average transaction latency (in milliseconds): {}\n".format(total_time / total_transactions))
+            "Transaction throughput (transactions / s): {}\n".format(
+                total_transactions / (self.total_time.total_seconds())))
+        sys.stderr.write(
+            "Average transaction latency (in milliseconds): {}\n".format(total_transaction_timings / total_transactions))
         sys.stderr.write(
             "Median transaction latency (in milliseconds): {}\n".format(get_percentile(sorted_transaction_timings, 50)))
         sys.stderr.write("95th percentile transaction latency (in milliseconds): {}\n".format(
@@ -51,7 +57,7 @@ class MetricsManager:
             get_percentile(sorted_transaction_timings, 99)))
 
 
-def setup_transactions(file, metrics, conn):
+def setup_transactions(file, conn):
     transactions = []
     line = file.readline()
     while line:
@@ -64,21 +70,21 @@ def setup_transactions(file, metrics, conn):
             for i in range(0, num_items):
                 item_line = file.readline()
                 inputs.append(item_line.rstrip('\n').split(','))
-            transactions.append(transaction.NewOrderTransaction(metrics, conn, inputs))
+            transactions.append(transaction.NewOrderTransaction(conn, inputs))
         elif identifier == TXN_ID["PAYMENT"]:
-            transactions.append(transaction.PaymentTransaction(metrics, conn, args[1:]))
+            transactions.append(transaction.PaymentTransaction(conn, args[1:]))
         elif identifier == TXN_ID["DELIVERY"]:
-            transactions.append(transaction.DeliveryTransaction(metrics, conn, args[1:]))
+            transactions.append(transaction.DeliveryTransaction(conn, args[1:]))
         elif identifier == TXN_ID["ORDER_STATUS"]:
-            transactions.append(transaction.OrderStatusTransaction(metrics, conn, args[1:]))
+            transactions.append(transaction.OrderStatusTransaction(conn, args[1:]))
         elif identifier == TXN_ID["STOCK_LEVEL"]:
-            transactions.append(transaction.StockLevelTransaction(metrics, conn, args[1:]))
+            transactions.append(transaction.StockLevelTransaction(conn, args[1:]))
         elif identifier == TXN_ID["POPULAR_ITEM"]:
-            transactions.append(transaction.PopularItemTransaction(metrics, conn, args[1:]))
+            transactions.append(transaction.PopularItemTransaction(conn, args[1:]))
         elif identifier == TXN_ID["TOP_BALANCE"]:
-            transactions.append(transaction.TopBalanceTransaction(metrics, conn, args[1:]))
+            transactions.append(transaction.TopBalanceTransaction(conn, args[1:]))
         elif identifier == TXN_ID["RELATED_CUSTOMER"]:
-            transactions.append(transaction.RelatedCustomerTransaction(metrics, conn, args[1:]))
+            transactions.append(transaction.RelatedCustomerTransaction(conn, args[1:]))
         else:
             print("UNABLE TO PARSE XACT INPUT: ", args)
 
@@ -115,25 +121,34 @@ def main():
                             database=database)
 
     metrics = MetricsManager()
-    transactions = setup_transactions(args.file, metrics, conn)
+    transactions = setup_transactions(args.file, conn)
     args.file.close()
 
+    total_execution_start = datetime.now()
     for txn in transactions:
+        transaction_start = datetime.now()
         retry_count = 0
+        last_error = ""
         while True:
             try:
                 txn.run()
                 # Flag issue if transactions had retried more than 15 times (sleep time > 5 seconds)
-                if retry_count > 15:
-                    sys.stderr.write("Transaction retried: " + str(retry_count) + " times before completion \n")
+                if retry_count > 10:
+                    sys.stderr.write("Transaction of type " + txn.__class__.__name__ + " retried: " + str(retry_count)
+                                     + " times before completion with error: " + last_error + " \n")
                 break
             except SerializationFailure as e:
-                sleep_ms = (2 ** retry_count) * 0.1 * (random.random() + 0.5)
+                sleep_ms = (2 ** (retry_count % 16)) * 0.1 * (random.random() + 0.5)
                 time.sleep(sleep_ms / 1000)
+                last_error = str(e)
                 retry_count += 1
                 continue
+        transaction_end = datetime.now()
+        metrics.add(transaction_end - transaction_start)
 
         txn.print_outputs()
+    total_execution_end = datetime.now()
+    metrics.add_total_time(total_execution_end - total_execution_start)
 
     metrics.output_metrics()
 

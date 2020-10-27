@@ -15,26 +15,13 @@ def create_values_placeholder(args, rows):
 
 
 class Transaction(ABC):
-    def __init__(self, metrics_manager):
+    def __init__(self):
         self.inputs = {}
         self.outputs = {}
-        self.metrics_manager = metrics_manager
-        self.start_time = None
-        self.end_time = None
 
     def print_outputs(self):
         for k, v in self.outputs.items():
             sys.stdout.write("{}: {}\n".format(k, v))
-
-    def start(self):
-        self.start_time = datetime.now()
-
-    def end(self):
-        self.end_time = datetime.now()
-
-        # Log metrics to manager
-        if self.metrics_manager is not None:
-            self.metrics_manager.add(self.end_time - self.start_time)
 
     # To be implemented by subclasses
     @abstractmethod
@@ -43,8 +30,8 @@ class Transaction(ABC):
 
 
 class NewOrderTransaction(Transaction):
-    def __init__(self, metrics_manager, conn, inputs):
-        super().__init__(metrics_manager)
+    def __init__(self, conn, inputs):
+        super().__init__()
         self.conn = conn
         self.customer_id = int(inputs[0])
         self.warehouse_id = int(inputs[1])
@@ -65,7 +52,6 @@ class NewOrderTransaction(Transaction):
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
-                self.start()
                 # Get district information, next order id
                 curs.execute("SELECT d_next_o_id, d_tax FROM district WHERE d_w_id=%s AND d_id=%s;",
                              (self.warehouse_id, self.district_id))
@@ -193,12 +179,11 @@ class NewOrderTransaction(Transaction):
                                   "remaining_stock": item["stocks"]["quantity"]}
                     order_items.append(order_item)
                 self.outputs["Items"] = order_items
-        self.end()
 
 
 class PaymentTransaction(Transaction):
-    def __init__(self, metrics_manager, conn, inputs):
-        super().__init__(metrics_manager)
+    def __init__(self, conn, inputs):
+        super().__init__()
         self.conn = conn
         self.warehouse_id = int(inputs[0])
         self.district_id = int(inputs[1])
@@ -209,7 +194,6 @@ class PaymentTransaction(Transaction):
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
-                self.start()
                 # Fetch and update warehouse details
                 curs.execute(
                     "SELECT w_ytd, w_street_1, w_street_2, w_city, w_state, w_zip FROM warehouse WHERE w_id=%s;",
@@ -270,12 +254,11 @@ class PaymentTransaction(Transaction):
                 self.outputs["District address"] = "{} {} {} {} {}".format(
                     d_street1, d_street2, d_city, d_state, d_zip)
                 self.outputs["Payment"] = self.payment
-        self.end()
 
 
 class DeliveryTransaction(Transaction):
-    def __init__(self, metrics_manager, conn, inputs):
-        super().__init__(metrics_manager)
+    def __init__(self, conn, inputs):
+        super().__init__()
         self.conn = conn
         self.warehouse_id = int(inputs[0])
         self.carrier_id = int(inputs[1])
@@ -283,7 +266,6 @@ class DeliveryTransaction(Transaction):
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
-                self.start()
 
                 # Retrieve orders to be processed by carrier
                 curs.execute(
@@ -370,12 +352,11 @@ class DeliveryTransaction(Transaction):
                         "UPSERT INTO customer (c_w_id, c_d_id, c_id, c_balance, c_delivery_cnt) VALUES " +
                         values_placeholder + ";",
                         updated_customers_vals)
-        self.end()
 
 
 class OrderStatusTransaction(Transaction):
-    def __init__(self, metrics_manager, conn, inputs):
-        super().__init__(metrics_manager)
+    def __init__(self, conn, inputs):
+        super().__init__()
         self.conn = conn
         self.warehouse_id = int(inputs[0])
         self.district_id = int(inputs[1])
@@ -384,7 +365,6 @@ class OrderStatusTransaction(Transaction):
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
-                self.start()
 
                 # Fetch customer information
                 curs.execute(
@@ -427,12 +407,10 @@ class OrderStatusTransaction(Transaction):
                     order_items.append(order_item)
                 self.outputs["Order items"] = order_items
 
-        self.end()
-
 
 class StockLevelTransaction(Transaction):
-    def __init__(self, metrics_manager, conn, inputs):
-        super().__init__(metrics_manager)
+    def __init__(self, conn, inputs):
+        super().__init__()
         self.conn = conn
         self.warehouse_id = int(inputs[0])
         self.district_id = int(inputs[1])
@@ -442,7 +420,6 @@ class StockLevelTransaction(Transaction):
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
-                self.start()
                 # Read next order number for district
                 curs.execute("SELECT d_next_o_id FROM district WHERE d_w_id=%s AND d_id=%s;",
                              (self.warehouse_id, self.district_id))
@@ -462,12 +439,11 @@ class StockLevelTransaction(Transaction):
 
                 # Add to output
                 self.outputs["Number of items below stock threshold"] = num_items
-        self.end()
 
 
 class PopularItemTransaction(Transaction):
-    def __init__(self, metrics_manager, conn, inputs):
-        super().__init__(metrics_manager)
+    def __init__(self, conn, inputs):
+        super().__init__()
         self.conn = conn
         self.warehouse_id = int(inputs[0])
         self.district_id = int(inputs[1])
@@ -478,7 +454,6 @@ class PopularItemTransaction(Transaction):
             with self.conn.cursor() as curs:
                 with open('popular-item.sql', 'r') as f:
                     popular_items_query = f.read()
-                    self.start()
 
                     # Get all orders with popular items
                     curs.execute(popular_items_query, {
@@ -527,12 +502,10 @@ class PopularItemTransaction(Transaction):
                     self.outputs["Orders with popular items"] = order_map
                     self.outputs['Popular item statistics'] = pop_item_statistics
 
-        self.end()
-
 
 class TopBalanceTransaction(Transaction):
-    def __init__(self, metrics_manager, conn, inputs):
-        super().__init__(metrics_manager)
+    def __init__(self, conn, inputs):
+        super().__init__()
         self.conn = conn
 
     def run(self):
@@ -540,7 +513,6 @@ class TopBalanceTransaction(Transaction):
             with self.conn.cursor() as curs:
                 with open('top-balance.sql', 'r') as f:
                     top_balance_query = f.read()
-                    self.start()
                     curs.execute(top_balance_query)
                     customers_top_balance = curs.fetchall()
 
@@ -548,12 +520,10 @@ class TopBalanceTransaction(Transaction):
                     self.outputs["Top 10 customers with highest balance"] = [
                         "({}, {}, {}, {}, {}, {})".format(*x) for x in customers_top_balance]
 
-        self.end()
-
 
 class RelatedCustomerTransaction(Transaction):
-    def __init__(self, metrics_manager, conn, inputs):
-        super().__init__(metrics_manager)
+    def __init__(self, conn, inputs):
+        super().__init__()
         self.conn = conn
         self.warehouse_id = int(inputs[0])
         self.district_id = int(inputs[1])
@@ -564,7 +534,6 @@ class RelatedCustomerTransaction(Transaction):
             with self.conn.cursor() as curs:
                 with open('related-customer.sql', 'r') as f:
                     related_customer_query = f.read()
-                    self.start()
 
                     curs.execute(related_customer_query, {
                         "input_warehouse_id": self.warehouse_id,
@@ -579,4 +548,3 @@ class RelatedCustomerTransaction(Transaction):
                                                                                       self.customer_id)
                     self.outputs['Related customers'] = [
                         "({}, {}, {})".format(*x) for x in related_customers]
-        self.end()
