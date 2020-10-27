@@ -267,40 +267,43 @@ class DeliveryTransaction(Transaction):
         with self.conn:
             with self.conn.cursor() as curs:
 
-                # Retrieve orders to be processed by carrier
+                # Retrieve orders to be processed by carrier with customer information
                 curs.execute(
                     """
-                    SELECT o_w_id, o_d_id, MIN(o_id) 
-                    FROM "order" 
-                    GROUP BY o_w_id, o_d_id, o_carrier_id 
-                    HAVING o_carrier_id IS NULL AND o_w_id=%s
+                    WITH selected_orders AS (
+                        SELECT o_w_id, o_d_id, MIN(o_id) as o_id
+                        FROM "order" 
+                        GROUP BY o_w_id, o_d_id, o_carrier_id 
+                        HAVING o_carrier_id IS NULL AND o_w_id=%s
+                    )
+                    SELECT o.o_w_id, o.o_d_id, o.o_id , o.o_c_id, c_balance, c_delivery_cnt
+                    FROM "order" o
+                    JOIN selected_orders s
+                    ON o.o_w_id = s.o_w_id AND o.o_d_id = s.o_d_id AND o.o_id = s.o_id
+                    JOIN customer
+                    ON o.o_w_id = c_w_id AND o.o_d_id = c_d_id AND o.o_c_id = c_id
+                    FOR UPDATE;
                     """,
                     (self.warehouse_id,))
-                selected_orders = curs.fetchall()
+                orders = curs.fetchall()
 
-                values_placeholder = create_values_placeholder(3, len(selected_orders))
+                values_placeholder = create_values_placeholder(3, len(orders))
                 order_keys = []
-                for order in selected_orders:
-                    order_keys.extend(order)
+                for order in orders:
+                    order_keys.extend(order[:3])
 
                 # Only process if there are orders to deliver on
                 if len(order_keys) > 0:
-                    curs.execute(
-                        """
-                        SELECT o_w_id, o_d_id, o_id , o_c_id 
-                        FROM "order" 
-                        WHERE (o_w_id, o_d_id, o_id) 
-                        IN (VALUES """ + values_placeholder + ");",
-                        order_keys)
-                    orders = curs.fetchall()
-
                     # Form list of customers to track
-                    customer_amounts = {}
+                    customers = {}
                     order_customer_mapping = {}
                     for order in orders:
                         customer_id = (*order[:2], order[3])
                         order_customer_mapping[tuple(order[:3])] = customer_id
-                        customer_amounts[customer_id] = 0
+                        customers[customer_id] = {
+                            "balance": order[4],
+                            "delivery_cnt": order[5] + 1
+                        }
 
                     # Update orders
                     curs.execute(
@@ -324,29 +327,15 @@ class DeliveryTransaction(Transaction):
                     order_lines = curs.fetchall()
                     for order_line in order_lines:
                         customer_id = order_customer_mapping[tuple(order_line[:3])]
-                        customer_amounts[customer_id] += order_line[-1]
+                        customers[customer_id]["balance"] += order_line[-1]
 
-                    # Fetch and update customers
-                    values_placeholder = create_values_placeholder(
-                        3, len(customer_amounts))
-                    customer_keys = []
-                    for customer_id in customer_amounts.keys():
-                        customer_keys.extend(customer_id)
-                    curs.execute(
-                        """
-                        SELECT c_w_id, c_d_id, c_id, c_balance, c_delivery_cnt 
-                        FROM customer 
-                        WHERE (c_w_id, c_d_id, c_id) IN (VALUES """ + values_placeholder + ");",
-                        customer_keys)
-
-                    customers = curs.fetchall()
+                    # Update customers
                     values_placeholder = create_values_placeholder(
                         5, len(customers))
                     updated_customers_vals = []
-                    for customer in customers:
-                        customer_id = tuple(customer[:3])
+                    for customer_id, values in customers.items():
                         updated_customers_vals.extend(
-                            (*customer_id, customer[3] + customer_amounts[customer_id], customer[4] + 1))
+                            (*customer_id, values["balance"], values["delivery_cnt"]))
 
                     curs.execute(
                         "UPSERT INTO customer (c_w_id, c_d_id, c_id, c_balance, c_delivery_cnt) VALUES " +
