@@ -20,10 +20,10 @@ def main():
                         )
     args = parser.parse_args()
 
-    # host = f'xcnc{args.hostNum}.comp.nus.edu.sg'
-    # port = '26259'
-    host = f'localhost'
-    port = '26257'
+    host = f'xcnc{args.hostNum}.comp.nus.edu.sg'
+    port = '26259'
+    #host = f'localhost'
+    #port = '26257'
     user = 'admin'  # use admin so we don't have to grant privileges manually
     database = args.database
     conn = psycopg2.connect(host=host,
