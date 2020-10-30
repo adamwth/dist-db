@@ -7,6 +7,7 @@ import psycopg2
 from psycopg2.errors import SerializationFailure
 import random
 import time
+import os
 
 TXN_ID = {
     "NEW_ORDER": "N",
@@ -48,13 +49,29 @@ class MetricsManager:
             "Transaction throughput (transactions / s): {}\n".format(
                 total_transactions / (self.total_time.total_seconds())))
         sys.stderr.write(
-            "Average transaction latency (in milliseconds): {}\n".format(total_transaction_timings / total_transactions))
+            "Average transaction latency (in milliseconds): {}\n".format(
+                total_transaction_timings / total_transactions))
         sys.stderr.write(
             "Median transaction latency (in milliseconds): {}\n".format(get_percentile(sorted_transaction_timings, 50)))
         sys.stderr.write("95th percentile transaction latency (in milliseconds): {}\n".format(
             get_percentile(sorted_transaction_timings, 95)))
         sys.stderr.write("99th percentile transaction latency (in milliseconds): {}\n".format(
             get_percentile(sorted_transaction_timings, 99)))
+
+    def write_metrics(self, filename):
+        metrics = []
+        total_transactions = len(self.transaction_timings)
+        sorted_transaction_timings = sorted(self.transaction_timings)
+        total_transaction_timings = sum(sorted_transaction_timings)
+        metrics.append(str(total_transactions))
+        metrics.append(str(self.total_time.total_seconds()))
+        metrics.append(str(total_transactions / (self.total_time.total_seconds())))
+        metrics.append(str(total_transaction_timings / total_transactions))
+        metrics.append(str(get_percentile(sorted_transaction_timings, 50)))
+        metrics.append(str(get_percentile(sorted_transaction_timings, 95)))
+        metrics.append(str(get_percentile(sorted_transaction_timings, 99)))
+        with open(filename, "w") as f:
+            f.write(",".join(metrics))
 
 
 def setup_transactions(file, conn):
@@ -122,6 +139,7 @@ def main():
 
     metrics = MetricsManager()
     transactions = setup_transactions(args.file, conn)
+    metrics_filename = os.path.splitext(os.path.basename(args.file.name))[0] + ".metrics"
     args.file.close()
 
     total_execution_start = datetime.now()
@@ -151,6 +169,7 @@ def main():
     metrics.add_total_time(total_execution_end - total_execution_start)
 
     metrics.output_metrics()
+    metrics.write_metrics(metrics_filename)
 
 
 if __name__ == '__main__':

@@ -2,6 +2,7 @@
 data-files
 xact-files
 *.out
+*.metrics
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
