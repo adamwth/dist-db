@@ -3,6 +3,10 @@ data-files
 xact-files
 *.out
 *.metrics
+*.aggregate
+*.state
+*.csv
+*.tar
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
