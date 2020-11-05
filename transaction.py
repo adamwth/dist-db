@@ -75,19 +75,25 @@ class NewOrderTransaction(Transaction):
 
                 # Retrieve stock information for items
                 total_amount = 0
+                district_field = "s_dist_" + str(self.district_id).zfill(2)
                 values_placeholder = create_values_placeholder(
                     2, len(self.items))
                 stock_keys = []
                 for item in self.items.values():
-                    stock_keys.append(self.warehouse_id)
-                    stock_keys.append(item["item_no"])
-                curs.execute(
-                    """
-                    SELECT s_w_id, s_i_id, s_quantity, s_ytd, s_order_cnt, s_remote_cnt, %s 
-                    FROM stock 
-                    WHERE (s_w_id, s_i_id) IN (VALUES """ + values_placeholder + ");",
-                    ("s_dist_" + str(self.district_id).zfill(2), *stock_keys))
-                stocks = curs.fetchall()
+                    stock_keys.append((district_field, self.warehouse_id, item["item_no"]))
+
+                stocks = []
+                for stock_key in stock_keys:
+                    curs.execute(
+                        """
+                        SELECT s_w_id, s_i_id, s_quantity, s_ytd, s_order_cnt, s_remote_cnt, %s 
+                        FROM stock 
+                        WHERE s_w_id = %s AND s_i_id = %s;
+                        """,
+                        stock_key)
+                    res = curs.fetchone()
+                    if res:
+                        stocks.append(res)
 
                 updated_stocks = []
                 for stock in stocks:
@@ -275,10 +281,9 @@ class DeliveryTransaction(Transaction):
                     if res:
                         orders.append(res)
 
-                values_placeholder = create_values_placeholder(3, len(orders))
                 order_keys = []
                 for order in orders:
-                    order_keys.extend(order[:3])
+                    order_keys.append(order[:3])
 
                 # Only process if there are orders to deliver on
                 if len(order_keys) > 0:
@@ -290,25 +295,29 @@ class DeliveryTransaction(Transaction):
                         order_customer_mapping[tuple(order[:3])] = customer_id
                         customer_balance[customer_id] = 0
 
-                    curs.execute(
-                        """
-                        UPDATE "order" 
-                        SET o_carrier_id=%s WHERE (o_w_id, o_d_id, o_id) 
-                        IN (VALUES """ + values_placeholder + ");",
-                        (self.carrier_id, *order_keys))
+                    execute_batch(curs,
+                                  """
+                                  UPDATE "order" 
+                                  SET o_carrier_id=%s WHERE o_w_id = %s AND o_d_id = %s AND o_id = %s;
+                                  """,
+                                  [[self.carrier_id, *order_key] for order_key in order_keys])
 
                     # Update order lines and fetch order amounts
+                    order_lines = []
                     delivery_date = datetime.utcnow()
-                    curs.execute(
-                        """
-                        UPDATE orderline 
-                        SET ol_delivery_d=%s 
-                        WHERE (ol_w_id, ol_d_id, ol_o_id) IN (VALUES """ + values_placeholder + """) 
-                        RETURNING ol_w_id, ol_d_id, ol_o_id, ol_number, ol_amount;
-                        """,
-                        (delivery_date, *order_keys))
+                    for order_key in order_keys:
+                        curs.execute(
+                            """
+                            UPDATE orderline 
+                            SET ol_delivery_d = %s 
+                            WHERE ol_w_id = %s AND ol_d_id = %s AND ol_o_id = %s
+                            RETURNING ol_w_id, ol_d_id, ol_o_id, ol_number, ol_amount;
+                            """,
+                            (delivery_date, *order_key))
+                        res = curs.fetchone()
+                        if res:
+                            order_lines.append(res)
 
-                    order_lines = curs.fetchall()
                     for order_line in order_lines:
                         customer_id = order_customer_mapping[tuple(order_line[:3])]
                         customer_balance[customer_id] += order_line[-1]
@@ -402,7 +411,7 @@ class StockLevelTransaction(Transaction):
                 # Count number of items with stock below threshold
                 curs.execute(
                     """
-                    SELECT COUNT(DISTINCT s_i_id) 
+                    SELECT COUNT(s_i_id) 
                     FROM orderline 
                     JOIN stock ON ol_i_id = s_i_id AND ol_w_id = s_w_id 
                     WHERE ol_w_id=%s AND ol_d_id=%s AND s_quantity < %s AND ol_o_id >= %s AND ol_o_id < %s;
