@@ -130,7 +130,7 @@ def main():
 
     host = f'xcnc{args.hostNum}.comp.nus.edu.sg'
     port = '26259'
-    user = 'admin'  # use admin so we don't have to grant privileges manually
+    user = 'root'  # use root so we don't have to grant privileges manually
     database = args.database
     conn = psycopg2.connect(host=host,
                             port=port,
@@ -170,6 +170,7 @@ def main():
 
     metrics.output_metrics()
     metrics.write_metrics(metrics_filename)
+    conn.close()
 
 
 if __name__ == '__main__':
