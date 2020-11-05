@@ -3,10 +3,10 @@ from datetime import datetime
 from decimal import Decimal
 import sys
 
-
 # Returns "(%s, %s, ...), (%s, %s, ...)" meant to be used for VALUES
 # args determines number of args in each row
 # rows determines number of rows for VALUES
+from psycopg2.extras import execute_batch
 
 
 def create_values_placeholder(args, rows):
@@ -52,19 +52,22 @@ class NewOrderTransaction(Transaction):
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
-                # Get district information, next order id
-                curs.execute("SELECT d_next_o_id, d_tax FROM district WHERE d_w_id=%s AND d_id=%s;",
-                             (self.warehouse_id, self.district_id))
-                order_id, district_tax = curs.fetchone()
-
-                # Update district information
-                curs.execute("UPDATE district SET d_next_o_id=%s WHERE d_w_id=%s AND d_id=%s;",
-                             (order_id + 1, self.warehouse_id, self.district_id))
+                # Fetch next order id and district information, updating next order id
+                curs.execute(
+                    """
+                    UPDATE district 
+                    SET d_next_o_id = d_next_o_id + 1
+                    WHERE d_w_id=%s AND d_id=%s
+                    RETURNING d_next_o_id, d_tax;
+                    """,
+                    (self.warehouse_id, self.district_id))
+                next_order_id, district_tax = curs.fetchone()
+                order_id = next_order_id - 1
 
                 # Create new order entry
                 all_local = 1 if all(
                     [x["supplying_warehouse_no"] == self.warehouse_id for x in self.items.values()]) else 0
-                entry_date = datetime.now()
+                entry_date = datetime.utcnow()
                 curs.execute("INSERT INTO \"order\" VALUES (%s, %s, %s, %s, %s, %s, %s, %s);", (
                     self.warehouse_id, self.district_id, order_id, self.customer_id, None, len(
                         self.items), all_local,
@@ -189,52 +192,42 @@ class PaymentTransaction(Transaction):
         self.district_id = int(inputs[1])
         self.customer_id = int(inputs[2])
         self.payment = float(inputs[3])
-        self.payment_decimal = Decimal(inputs[3])
 
     def run(self):
         with self.conn:
             with self.conn.cursor() as curs:
                 # Fetch and update warehouse details
                 curs.execute(
-                    "SELECT w_ytd, w_street_1, w_street_2, w_city, w_state, w_zip FROM warehouse WHERE w_id=%s;",
-                    (self.warehouse_id,))
-                w_ytd, w_street1, w_street2, w_city, w_state, w_zip = curs.fetchone()
-                curs.execute("UPDATE warehouse SET w_ytd = %s WHERE w_id=%s;",
-                             (w_ytd + self.payment_decimal, self.warehouse_id))
+                    """
+                    UPDATE warehouse SET w_ytd = w_ytd + %s
+                    WHERE w_id=%s
+                    RETURNING w_street_1, w_street_2, w_city, w_state, w_zip;
+                    """,
+                    (self.payment, self.warehouse_id))
+                w_street1, w_street2, w_city, w_state, w_zip = curs.fetchone()
 
                 # Fetch and update district details
                 curs.execute(
                     """
-                    SELECT d_ytd, d_street_1, d_street_2, d_city, d_state, d_zip 
-                    FROM district 
-                    WHERE d_w_id=%s AND d_id=%s;
+                    UPDATE district
+                    SET d_ytd = d_ytd + %s
+                    WHERE d_w_id=%s AND d_id=%s
+                    RETURNING d_street_1, d_street_2, d_city, d_state, d_zip
                     """,
-                    (self.warehouse_id, self.district_id))
-                d_ytd, d_street1, d_street2, d_city, d_state, d_zip = curs.fetchone()
-                curs.execute("UPDATE district SET d_ytd = %s WHERE d_w_id=%s AND d_id=%s;",
-                             (d_ytd + self.payment_decimal, self.warehouse_id, self.district_id))
+                    (self.payment, self.warehouse_id, self.district_id))
+                d_street1, d_street2, d_city, d_state, d_zip = curs.fetchone()
 
                 # Fetch and update customer details
                 curs.execute(
                     """
-                    SELECT c_first, c_middle, c_last, c_street_1, c_street_2, c_city, c_state, c_zip, c_phone, c_since, 
-                    c_credit, c_credit_lim, c_discount, c_balance, c_ytd_payment, c_payment_cnt 
-                    FROM customer 
-                    WHERE c_w_id=%s AND c_d_id=%s AND c_id=%s;
+                    UPDATE customer
+                    SET c_balance = c_balance - %s, c_ytd_payment = c_ytd_payment + %s, c_payment_cnt = c_payment_cnt + 1
+                    WHERE c_w_id=%s AND c_d_id=%s AND c_id=%s
+                    RETURNING c_first, c_middle, c_last, c_street_1, c_street_2, c_city, c_state, c_zip, c_phone, 
+                    c_since, c_credit, c_credit_lim, c_discount, c_balance;
                     """,
-                    (self.warehouse_id, self.district_id, self.customer_id))
-                first_name, middle_name, last_name, c_street1, c_street2, c_city, c_state, c_zip, c_phone, c_since, c_credit, c_credit_lim, c_discount, c_balance, c_ytd, c_payment_count = curs.fetchone()
-                new_balance = c_balance - self.payment_decimal
-                new_ytd_payment = c_ytd + self.payment
-                new_payment_cnt = c_payment_count + 1
-                curs.execute(
-                    """
-                    UPDATE customer 
-                    SET c_balance=%s, c_ytd_payment=%s, c_payment_cnt=%s 
-                    WHERE c_w_id=%s AND c_d_id=%s AND c_id=%s;
-                    """,
-                    (new_balance, new_ytd_payment, new_payment_cnt, self.warehouse_id, self.district_id,
-                     self.customer_id))
+                    (self.payment, self.payment, self.warehouse_id, self.district_id, self.customer_id))
+                first_name, middle_name, last_name, c_street1, c_street2, c_city, c_state, c_zip, c_phone, c_since, c_credit, c_credit_lim, c_discount, c_balance = curs.fetchone()
 
                 # Add to output dict
                 self.outputs["Customer identifier"] = "({}, {}, {})".format(self.warehouse_id, self.district_id,
@@ -248,7 +241,7 @@ class PaymentTransaction(Transaction):
                 self.outputs["Customer credit"] = c_credit
                 self.outputs["Customer credit limit"] = c_credit_lim
                 self.outputs["Customer discount"] = c_discount
-                self.outputs["Customer balance"] = new_balance
+                self.outputs["Customer balance"] = c_balance
                 self.outputs["Warehouse address"] = "{} {} {} {} {}".format(w_street1, w_street2, w_city, w_state,
                                                                             w_zip)
                 self.outputs["District address"] = "{} {} {} {} {}".format(
@@ -267,25 +260,20 @@ class DeliveryTransaction(Transaction):
         with self.conn:
             with self.conn.cursor() as curs:
 
-                # Retrieve orders to be processed by carrier with customer information
-                curs.execute(
-                    """
-                    WITH selected_orders AS (
-                        SELECT o_w_id, o_d_id, MIN(o_id) as o_id
-                        FROM "order" 
-                        GROUP BY o_w_id, o_d_id, o_carrier_id 
-                        HAVING o_carrier_id IS NULL AND o_w_id=%s
-                    )
-                    SELECT o.o_w_id, o.o_d_id, o.o_id , o.o_c_id, c_balance, c_delivery_cnt
-                    FROM "order" o
-                    JOIN selected_orders s
-                    ON o.o_w_id = s.o_w_id AND o.o_d_id = s.o_d_id AND o.o_id = s.o_id
-                    JOIN customer
-                    ON o.o_w_id = c_w_id AND o.o_d_id = c_d_id AND o.o_c_id = c_id
-                    FOR UPDATE;
-                    """,
-                    (self.warehouse_id,))
-                orders = curs.fetchall()
+                orders = []
+                for i in range(1, 11):
+                    curs.execute(
+                        """
+                        SELECT o_w_id, o_d_id, o_id, o_c_id FROM "order"
+                        WHERE o_w_id = %s AND o_d_id = %s
+                        AND o_carrier_id IS NULL
+                        ORDER BY o_id
+                        LIMIT 1
+                        """, (self.warehouse_id, i))
+
+                    res = curs.fetchone()
+                    if res:
+                        orders.append(res)
 
                 values_placeholder = create_values_placeholder(3, len(orders))
                 order_keys = []
@@ -294,18 +282,14 @@ class DeliveryTransaction(Transaction):
 
                 # Only process if there are orders to deliver on
                 if len(order_keys) > 0:
-                    # Form list of customers to track
-                    customers = {}
+                    # Update orders
+                    customer_balance = {}
                     order_customer_mapping = {}
                     for order in orders:
                         customer_id = (*order[:2], order[3])
                         order_customer_mapping[tuple(order[:3])] = customer_id
-                        customers[customer_id] = {
-                            "balance": order[4],
-                            "delivery_cnt": order[5] + 1
-                        }
+                        customer_balance[customer_id] = 0
 
-                    # Update orders
                     curs.execute(
                         """
                         UPDATE "order" 
@@ -314,7 +298,7 @@ class DeliveryTransaction(Transaction):
                         (self.carrier_id, *order_keys))
 
                     # Update order lines and fetch order amounts
-                    delivery_date = datetime.now()
+                    delivery_date = datetime.utcnow()
                     curs.execute(
                         """
                         UPDATE orderline 
@@ -327,20 +311,21 @@ class DeliveryTransaction(Transaction):
                     order_lines = curs.fetchall()
                     for order_line in order_lines:
                         customer_id = order_customer_mapping[tuple(order_line[:3])]
-                        customers[customer_id]["balance"] += order_line[-1]
+                        customer_balance[customer_id] += order_line[-1]
 
                     # Update customers
-                    values_placeholder = create_values_placeholder(
-                        5, len(customers))
-                    updated_customers_vals = []
-                    for customer_id, values in customers.items():
-                        updated_customers_vals.extend(
-                            (*customer_id, values["balance"], values["delivery_cnt"]))
+                    updated_customers = []
+                    for customer_id, balance_addition in customer_balance.items():
+                        updated_customers.append((balance_addition, *customer_id))
 
-                    curs.execute(
-                        "UPSERT INTO customer (c_w_id, c_d_id, c_id, c_balance, c_delivery_cnt) VALUES " +
-                        values_placeholder + ";",
-                        updated_customers_vals)
+                    execute_batch(curs,
+                                  """
+                                  UPDATE customer
+                                  SET c_delivery_cnt = c_delivery_cnt + 1,
+                                  c_balance = c_balance + %s
+                                  WHERE c_w_id = %s AND c_d_id = %s AND c_id = %s;
+                                  """,
+                                  updated_customers)
 
 
 class OrderStatusTransaction(Transaction):
