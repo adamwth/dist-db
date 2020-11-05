@@ -1,3 +1,4 @@
+SET TRANSACTION AS OF SYSTEM TIME %(current_timestamp)s;
 WITH top_customers AS (
 SELECT
     c_w_id,

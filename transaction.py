@@ -502,7 +502,9 @@ class TopBalanceTransaction(Transaction):
             with self.conn.cursor() as curs:
                 with open('top-balance.sql', 'r') as f:
                     top_balance_query = f.read()
-                    curs.execute(top_balance_query)
+                    curs.execute(top_balance_query, {
+                        "current_timestamp": datetime.utcnow()
+                    })
                     customers_top_balance = curs.fetchall()
 
                     # Add to outputs
@@ -527,7 +529,8 @@ class RelatedCustomerTransaction(Transaction):
                     curs.execute(related_customer_query, {
                         "input_warehouse_id": self.warehouse_id,
                         "input_customer_id": self.customer_id,
-                        "input_district_id": self.district_id
+                        "input_district_id": self.district_id,
+                        "current_timestamp": datetime.utcnow()
                     })
                     related_customers = curs.fetchall()
 

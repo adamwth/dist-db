@@ -1,3 +1,4 @@
+SET TRANSACTION AS OF SYSTEM TIME %(current_timestamp)s;
 WITH customerItem AS (
     SELECT
         c.c_id,
