@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
-from datetime import datetime
-from decimal import Decimal
+from datetime import datetime, timedelta
 import sys
 
 # Returns "(%s, %s, ...), (%s, %s, ...)" meant to be used for VALUES
@@ -497,7 +496,7 @@ class TopBalanceTransaction(Transaction):
                 with open('top-balance.sql', 'r') as f:
                     top_balance_query = f.read()
                     curs.execute(top_balance_query, {
-                        "current_timestamp": datetime.utcnow()
+                        "current_timestamp": datetime.utcnow() - timedelta(seconds=1)
                     })
                     customers_top_balance = curs.fetchall()
 
@@ -524,7 +523,7 @@ class RelatedCustomerTransaction(Transaction):
                         "input_warehouse_id": self.warehouse_id,
                         "input_customer_id": self.customer_id,
                         "input_district_id": self.district_id,
-                        "current_timestamp": datetime.utcnow()
+                        "current_timestamp": datetime.utcnow() - timedelta(seconds=1)
                     })
                     related_customers = curs.fetchall()
 
