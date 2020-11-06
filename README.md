@@ -107,8 +107,6 @@ With the files inside these 4 folders, we can run the `aggregate-metrics.py` scr
 
 # Other Important Files
 
-# Important files
-
 ## transaction.py
 
 This file contains the implementations of the transactions needed to run the experiments.
