@@ -117,9 +117,6 @@ This file contains the implementations of the transactions needed to run the exp
 
 There are several `.sql` files in the root directory. Their uses are categorized as such:
 
-## test-xact-files/*.txt
-Contains single transactions of each type to test client implementation.
-
 ### Setup
 
 - `create-tables.sql`
@@ -131,3 +128,6 @@ Contains single transactions of each type to test client implementation.
 - `popular-item.sql`
 - `top-balance.sql`
 - `related-customer.sql`
+
+## test-xact-files/*.txt
+Contains single transactions of each type to test client implementation.
