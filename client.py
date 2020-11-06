@@ -122,6 +122,10 @@ def main():
                         type=int, default=2,
                         help='Host number e.g. 2 for xcnc2. Default is xcnc2.'
                         )
+    parser.add_argument("-p", '--port',
+                        type=int, default=26260,
+                        help='Port e.g. 26260. Default is 26260.'
+                        )
     parser.add_argument("-db", '--database',
                         type=str, default="project",
                         help='Database name'
@@ -129,7 +133,7 @@ def main():
     args = parser.parse_args()
 
     host = f'xcnc{args.hostNum}.comp.nus.edu.sg'
-    port = '26259'
+    port = args.port
     user = 'root'  # use root so we don't have to grant privileges manually
     database = args.database
     conn = psycopg2.connect(host=host,

@@ -41,9 +41,9 @@ def dropTables(conn):
         execSqlFromFile(conn, f)
 
 
-def connectDb(hostNum, database):
+def connectDb(hostNum, port, database):
     host = f'xcnc{hostNum}.comp.nus.edu.sg'
-    port = '26259'
+    port = port
     user = 'root'  # use root so we don't have to grant privileges manually
     conn = psycopg2.connect(host=host,
                             port=port,
@@ -53,13 +53,17 @@ def connectDb(hostNum, database):
 
 
 def setupParser():
-    # Usage: python3 setup.py <hostNum> <db> [-d]
-    # Example: python3 setup.py 2
+    # Usage: python3 setup.py <hostNum> <port> <db> [-d]
+    # Example: python3 setup.py -hn 2 -p 26260
     # if hostNum not specified, use default host 2 (i.e. xcnc2)
     parser = argparse.ArgumentParser()
     parser.add_argument("-hn", '--hostNum',
                         type=int, default=2,
                         help='Host number e.g. 2 for xcnc2. Default is xcnc2.'
+                        )
+    parser.add_argument("-p", '--port',
+                        type=int, default=26260,
+                        help='Port e.g. 26260. Default is 26260.'
                         )
     parser.add_argument("-db", '--database',
                         type=str, default="project",
@@ -76,7 +80,7 @@ def main():
     args = parser.parse_args()
 
     # Connect to DB
-    conn = connectDb(args.hostNum, args.database)
+    conn = connectDb(args.hostNum, args.port, args.database)
 
     # If -d flag was specified, drop tables only and return
     dropTables(conn)

@@ -3,8 +3,8 @@ import psycopg2
 
 
 def main():
-    # Usage: python3 output_state.py <output file name> <hostNum> <db>
-    # Example: python3 client.py exp1-out -hn 2
+    # Usage: python3 output_state.py <output file name> <hostNum> <port> <db>
+    # Example: python3 client.py exp1-out -hn 2 -p 26260
     # if hostNum not specified, use default host 2 (i.e. xcnc2)
     parser = argparse.ArgumentParser()
     parser.add_argument("file", metavar="F",
@@ -14,6 +14,10 @@ def main():
                         type=int, default=2,
                         help='Host number e.g. 2 for xcnc2. Default is xcnc2.'
                         )
+    parser.add_argument("-p", '--port',
+                        type=int, default=26260,
+                        help='Port e.g. 26260. Default is 26260.'
+                        )
     parser.add_argument("-db", '--database',
                         type=str, default="project",
                         help='Database name'
@@ -21,10 +25,8 @@ def main():
     args = parser.parse_args()
 
     host = f'xcnc{args.hostNum}.comp.nus.edu.sg'
-    port = '26259'
-    #host = f'localhost'
-    #port = '26257'
-    user = 'admin'  # use admin so we don't have to grant privileges manually
+    port = args.port
+    user = 'root'  # use root so we don't have to grant privileges manually
     database = args.database
     conn = psycopg2.connect(host=host,
                             port=port,
