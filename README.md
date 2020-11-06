@@ -45,7 +45,15 @@ Run with `python3 output_state.py <output file> -hn <host number> -p <port>`
 ### aggregate-metrics.py
 
 #### Execution parameters
-Run with `python3 aggregate-metrics.py`. Output is an `all_metrics.csv` file in the root directory with the aggregated metrics (min, max, avg) of all performance benchmarks, grouped by experiment per row.
+Run with `python3 aggregate-metrics.py`.
+
+This file generates 3 files, depending on what function is called in its `main` function.
+
+1. Calling `write_aggregate_metrics(experiment_folders)` will generate `throughput.csv` and `all_metrics.csv` files in the root directory. The former is the aggregated throughput metric (min, max, avg) grouped by experiment per row, while the latter is the aggregated metrics (min, max, avg) of all performance benchmarks, grouped by experiment per row.
+   - `throughput.csv` schema: experiment_number,min,avg,max
+   - `all_metrics.csv` schema: experiment_number,measurement_a_min,measurement_a_avg,measurement_a_max,measurement_b_min,...,measurement_g_max
+2. Calling `write_clients_csv(experiment_folders, nc_by_folder)` will generate `clients.csv` file in the root directory. This is the file as requested in the project brief, which has the following schema:
+   - experiment_number,client_number,measurement_a,measurement_b,...,measurement_g
 
 # Running an experiment
 The `run-experiment.sh` script is used to run clients in parallel, each reading a corresponding transaction file and assigned hosts in a round robin manner
@@ -88,7 +96,18 @@ In the same folder as `run-experiment.sh`, you should see the following files pe
 
 ## Analyzing output
 
+When each experiment finishes, the output will be `*_output.out`, `*_stats.out` and `*.metrics` files for every client.
+At the end of each experiment, put all of these files into a folder with the name corresponding to the experiment number:
+- Experiment 1: `run-20-node-4`
+- Experiment 2: `run-20-node-5`
+- Experiment 3: `run-40-node-4`
+- Experiment 4: `run-40-node-5`
+
+With the files inside these 4 folders, we can run the `aggregate-metrics.py` script to generate the `clients.csv` and `throughput.csv` file. You will need to open the `aggregate-metrics.py` file to make sure `write_aggregate_metrics(experiment_folders)` and `write_clients_csv(experiment_folders, nc_by_folder)` are both uncommented. Refer to [aggregate-metrics.py](#aggregate-metrics.py) for further details on what each function call is used for.
+
 # Other Important Files
+
+# Important files
 
 ## transaction.py
 
